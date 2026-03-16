@@ -1,0 +1,14 @@
+{
+  "name": "nkom",
+  "module": "index.ts",
+  "type": "module",
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "xlsx": "^0.18.5"
+  }
+}
