@@ -71,6 +71,31 @@ export async function generateCalendarEvents(
   return dedupeEvents(events);
 }
 
+export async function getLatestXlsxFetchedAt(): Promise<string | null> {
+  const files = await getXlsxFilesFromPage(SOURCE_PAGE_URL);
+  const fetchedAtValues: number[] = [];
+
+  for (const file of files) {
+    const cachePaths = getCachePaths(file.url);
+
+    try {
+      const metaRaw = await fs.readFile(cachePaths.metaPath, "utf8");
+      const meta = JSON.parse(metaRaw) as CacheMeta;
+      if (typeof meta.fetchedAt === "number") {
+        fetchedAtValues.push(meta.fetchedAt);
+      }
+    } catch {
+      // Skip missing or malformed metadata and continue.
+    }
+  }
+
+  if (!fetchedAtValues.length) {
+    return null;
+  }
+
+  return new Date(Math.max(...fetchedAtValues)).toISOString();
+}
+
 export async function getAvailableCities(): Promise<string[]> {
   const files = await getXlsxFilesFromPage(SOURCE_PAGE_URL);
   const unique = new Map<string, string>();

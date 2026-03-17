@@ -2,13 +2,27 @@ import {
   generateCalendarEvents,
   getCacheDiagnostics,
   getAvailableCities,
+  getLatestXlsxFetchedAt,
   SOURCE_PAGE_URL,
 } from "./nkomService.ts";
+import { mkdir } from "node:fs/promises";
 import { renderHomePage } from "./uiPage.tsx";
 
 const DEFAULT_KEYWORD = "Kalviškės";
+const UI_ASSET_OUT_DIR = "./public/assets";
 
-export function startServer(): void {
+const UI_ASSET_MIME: Record<string, string> = {
+  ".js": "text/javascript; charset=utf-8",
+  ".css": "text/css; charset=utf-8",
+};
+
+const UI_BUILD_ENTRYPOINTS = [
+  "./src/ui/client/home-page.ts",
+  "./src/ui/client/tailwind-config.ts",
+];
+
+export async function startServer(): Promise<void> {
+  await buildUiAssets();
   const port = Number(process.env.PORT ?? 3000);
 
   Bun.serve({
@@ -43,6 +57,10 @@ export function startServer(): void {
         return htmlResponse(renderHomePage());
       }
 
+      if (url.pathname.startsWith("/assets/")) {
+        return await assetResponse(url.pathname);
+      }
+
       if (url.pathname === "/cities") {
         try {
           const cities = await getAvailableCities();
@@ -64,10 +82,12 @@ export function startServer(): void {
 
         try {
           const events = await generateCalendarEvents(keyword);
+          const lastUpdatedAt = await getLatestXlsxFetchedAt();
           return jsonResponse({
             keyword,
             sourcePageUrl: SOURCE_PAGE_URL,
             count: events.length,
+            lastUpdatedAt,
             events,
           });
         } catch (error) {
@@ -82,6 +102,55 @@ export function startServer(): void {
   });
 
   console.log(`NKOM service listening on http://localhost:${port}`);
+}
+
+async function buildUiAssets(): Promise<void> {
+  await mkdir(UI_ASSET_OUT_DIR, { recursive: true });
+
+  await Bun.write(
+    `${UI_ASSET_OUT_DIR}/home-page.css`,
+    Bun.file("./src/ui/client/home-page.css"),
+  );
+
+  const build = await Bun.build({
+    entrypoints: UI_BUILD_ENTRYPOINTS,
+    outdir: UI_ASSET_OUT_DIR,
+    target: "browser",
+    format: "iife",
+    naming: "[name].js",
+    minify: false,
+    sourcemap: "none",
+  });
+
+  if (!build.success) {
+    const details =
+      build.logs
+        .map((log) => log.message)
+        .filter(Boolean)
+        .join("\n") || "Unknown build error";
+    throw new Error(`Failed to build UI assets:\n${details}`);
+  }
+}
+
+async function assetResponse(pathname: string): Promise<Response> {
+  const extension = pathname.slice(pathname.lastIndexOf("."));
+  const contentType = UI_ASSET_MIME[extension];
+  if (!contentType) {
+    return jsonResponse({ error: "Not found" }, 404);
+  }
+
+  const file = Bun.file(`./public${pathname}`);
+  if (!(await file.exists())) {
+    return jsonResponse({ error: "Not found" }, 404);
+  }
+
+  return new Response(file, {
+    headers: {
+      "content-type": contentType,
+      "cache-control": "no-store, max-age=0",
+      pragma: "no-cache",
+    },
+  });
 }
 
 function jsonResponse(body: unknown, status = 200): Response {

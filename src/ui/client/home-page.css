@@ -1,0 +1,47 @@
+@import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+
+:root {
+  --background: 44 33% 97%;
+  --foreground: 20 15% 12%;
+  --card: 0 0% 100%;
+  --card-foreground: 20 15% 12%;
+  --primary: 24 91% 53%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 45 60% 90%;
+  --secondary-foreground: 22 35% 20%;
+  --muted: 38 45% 93%;
+  --muted-foreground: 24 18% 35%;
+  --border: 28 24% 82%;
+  --input: 26 25% 80%;
+  --ring: 24 91% 53%;
+}
+
+body {
+  background: radial-gradient(circle at 10% 10%, #ffe5bd 0%, transparent 40%),
+    radial-gradient(circle at 90% 20%, #ffd7c2 0%, transparent 35%),
+    linear-gradient(160deg, #fffdf8 0%, #fef8ef 100%);
+}
+
+.hero-enter {
+  animation: riseIn 600ms ease-out both;
+}
+
+.stagger-1 {
+  animation-delay: 120ms;
+}
+
+.stagger-2 {
+  animation-delay: 220ms;
+}
+
+@keyframes riseIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
