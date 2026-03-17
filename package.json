@@ -2,13 +2,20 @@
   "name": "nkom",
   "module": "index.ts",
   "type": "module",
+  "scripts": {
+    "start": "bun ./index.ts"
+  },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3"
   },
   "peerDependencies": {
     "typescript": "^5"
   },
   "dependencies": {
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
     "xlsx": "^0.18.5"
   }
 }

@@ -6,6 +6,19 @@ import crypto from "node:crypto";
 type CellValue = string | number | null | undefined;
 type FileEntry = { url: string; type: string };
 
+type CacheMeta = {
+  fetchedAt: number;
+  binary: boolean;
+};
+
+export type CacheDiagnostics = {
+  cacheDir: string;
+  ttlHours: number;
+  fileCount: number;
+  totalBytes: number;
+  latestFetchedAt: string | null;
+};
+
 export type CalendarEvent = {
   type: string;
   date: string;
@@ -25,6 +38,7 @@ export async function generateCalendarEvents(
 ): Promise<CalendarEvent[]> {
   const files = await getXlsxFilesFromPage(SOURCE_PAGE_URL);
   const normalizedKeyword = normalizeText(keyword);
+  const keywordKeys = extractLocalityKeys(keyword);
 
   const events: CalendarEvent[] = [];
   for (const file of files) {
@@ -37,7 +51,7 @@ export async function generateCalendarEvents(
     const monthColumns = extractMonthColumns(data);
 
     for (const row of data) {
-      if (!rowIncludesKeyword(row, normalizedKeyword)) {
+      if (!rowIncludesKeyword(row, normalizedKeyword, keywordKeys)) {
         continue;
       }
 
@@ -74,7 +88,7 @@ export async function getAvailableCities(): Promise<string[]> {
 
       const candidates = extractCityCandidates(row);
       for (const candidate of candidates) {
-        const normalized = normalizeText(candidate);
+        const normalized = toLocalityKey(candidate);
         if (!unique.has(normalized)) {
           unique.set(normalized, candidate);
         }
@@ -83,6 +97,64 @@ export async function getAvailableCities(): Promise<string[]> {
   }
 
   return [...unique.values()].sort((a, b) => a.localeCompare(b, "lt"));
+}
+
+export async function getCacheDiagnostics(): Promise<CacheDiagnostics> {
+  let entries: Array<{ name: string; size: number }> = [];
+  try {
+    const dirEntries = await fs.readdir(CACHE_DIR, { withFileTypes: true });
+    for (const entry of dirEntries) {
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      const fullPath = path.join(CACHE_DIR, entry.name);
+      const stat = await fs.stat(fullPath);
+      entries.push({ name: entry.name, size: stat.size });
+    }
+  } catch {
+    return {
+      cacheDir: CACHE_DIR,
+      ttlHours: Math.round(CACHE_TTL_MS / 3600000),
+      fileCount: 0,
+      totalBytes: 0,
+      latestFetchedAt: null,
+    };
+  }
+
+  const metaFiles = entries.filter((entry) =>
+    entry.name.endsWith(".meta.json"),
+  );
+  const fetchedAtValues: number[] = [];
+
+  for (const metaFile of metaFiles) {
+    try {
+      const raw = await fs.readFile(
+        path.join(CACHE_DIR, metaFile.name),
+        "utf8",
+      );
+      const meta = JSON.parse(raw) as CacheMeta;
+      if (typeof meta.fetchedAt === "number") {
+        fetchedAtValues.push(meta.fetchedAt);
+      }
+    } catch {
+      // Ignore malformed metadata files and continue diagnostics.
+    }
+  }
+
+  const latestFetchedAtMs = fetchedAtValues.length
+    ? Math.max(...fetchedAtValues)
+    : null;
+
+  return {
+    cacheDir: CACHE_DIR,
+    ttlHours: Math.round(CACHE_TTL_MS / 3600000),
+    fileCount: entries.length,
+    totalBytes: entries.reduce((sum, entry) => sum + entry.size, 0),
+    latestFetchedAt: latestFetchedAtMs
+      ? new Date(latestFetchedAtMs).toISOString()
+      : null,
+  };
 }
 
 async function readFirstSheetRows(fileUrl: string): Promise<CellValue[][]> {
@@ -101,6 +173,7 @@ async function readFirstSheetRows(fileUrl: string): Promise<CellValue[][]> {
 function rowIncludesKeyword(
   row: CellValue[],
   normalizedKeyword: string,
+  keywordKeys: Set<string>,
 ): boolean {
   if (!normalizedKeyword) {
     return false;
@@ -111,7 +184,23 @@ function rowIncludesKeyword(
       return false;
     }
 
-    return normalizeText(cell).includes(normalizedKeyword);
+    const normalizedCell = normalizeText(stripParenthesizedText(cell));
+    if (normalizedCell.includes(normalizedKeyword)) {
+      return true;
+    }
+
+    if (!keywordKeys.size) {
+      return false;
+    }
+
+    const cellKeys = extractLocalityKeys(cell);
+    for (const key of keywordKeys) {
+      if (cellKeys.has(key)) {
+        return true;
+      }
+    }
+
+    return false;
   });
 }
 
@@ -125,10 +214,7 @@ function extractCityCandidates(row: CellValue[]): string[] {
     return [];
   }
 
-  const sanitized = preferredCell
-    .replace(/\([^)]*\)/g, " ")
-    .replace(/\bSB\b/gi, " ")
-    .replace(/["„“”]/g, " ")
+  const sanitized = stripParenthesizedText(preferredCell)
     .replace(/\s+/g, " ")
     .trim();
   if (!sanitized || /\d/.test(sanitized)) {
@@ -149,14 +235,15 @@ function extractCityCandidates(row: CellValue[]): string[] {
     "komunalinink",
   ];
 
-  const parts = sanitized
-    .split(/[;,/]/g)
-    .map((part) => part.trim())
-    .filter(Boolean);
+  const parts = splitCityParts(sanitized);
 
   const candidates = new Set<string>();
   for (const part of parts) {
-    const cleaned = part.replace(/\b(g\.|vs\.)\b/gi, " ").trim();
+    const cleaned = cleanCityDisplayName(part);
+    if (!cleaned) {
+      continue;
+    }
+
     const normalized = normalizeText(cleaned);
     if (normalized.length < 3 || normalized.length > 40) {
       continue;
@@ -183,6 +270,101 @@ function extractCityCandidates(row: CellValue[]): string[] {
   }
 
   return [...candidates];
+}
+
+function stripParenthesizedText(value: string): string {
+  let result = value;
+  // Repeated replace handles nested parentheses in malformed source text.
+  while (/\([^()]*\)/.test(result)) {
+    result = result.replace(/\([^()]*\)/g, " ");
+  }
+
+  return result;
+}
+
+function splitCityParts(value: string): string[] {
+  return value
+    .split(/[;,/]/g)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function cleanCityDisplayName(value: string): string {
+  return value
+    .replace(/\s+/g, " ")
+    .replace(/[\s,.]+$/g, "")
+    .replace(/\s+(?:vs\.?|k\.?|km\.?|mstl\.?|m\.)$/i, "")
+    .trim();
+}
+
+function extractLocalityKeys(value: string): Set<string> {
+  const source = stripParenthesizedText(value);
+  const parts = splitCityParts(source);
+  const keys = new Set<string>();
+
+  for (const part of parts) {
+    const cleaned = cleanCityDisplayName(part);
+    if (!cleaned) {
+      continue;
+    }
+
+    const key = toLocalityKey(cleaned);
+    if (key) {
+      keys.add(key);
+    }
+  }
+
+  return keys;
+}
+
+function toLocalityKey(value: string): string {
+  const normalized = normalizeText(value)
+    .replace(/["“”„']/g, "")
+    .replace(/\b(?:vs|k|km|mstl|m)\b/g, " ")
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const words = normalized
+    .split(" ")
+    .filter(Boolean)
+    .map((word) => stemLocalityWord(word));
+
+  return words.join(" ").trim();
+}
+
+function stemLocalityWord(word: string): string {
+  const endings = [
+    "iai",
+    "iu",
+    "ių",
+    "io",
+    "ui",
+    "ai",
+    "as",
+    "is",
+    "ys",
+    "es",
+    "os",
+    "us",
+    "e",
+    "a",
+    "i",
+    "u",
+    "ų",
+  ];
+
+  for (const ending of endings) {
+    if (word.endsWith(ending) && word.length - ending.length >= 4) {
+      return word.slice(0, -ending.length);
+    }
+  }
+
+  return word;
 }
 
 function hasScheduleDays(row: CellValue[]): boolean {

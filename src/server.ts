@@ -1,9 +1,10 @@
 import {
   generateCalendarEvents,
+  getCacheDiagnostics,
   getAvailableCities,
   SOURCE_PAGE_URL,
 } from "./nkomService.ts";
-import { renderHomePage } from "./uiPage.ts";
+import { renderHomePage } from "./uiPage.tsx";
 
 const DEFAULT_KEYWORD = "Kalviškės";
 
@@ -16,7 +17,26 @@ export function startServer(): void {
       const url = new URL(request.url);
 
       if (url.pathname === "/health") {
-        return jsonResponse({ ok: true });
+        const memory = process.memoryUsage();
+        const cache = await getCacheDiagnostics();
+        return jsonResponse({
+          ok: true,
+          service: "nkom",
+          now: new Date().toISOString(),
+          uptimeSeconds: Math.round(process.uptime()),
+          bunVersion: Bun.version,
+          nodeCompatibilityVersion: process.version,
+          platform: process.platform,
+          pid: process.pid,
+          memory: {
+            rssBytes: memory.rss,
+            heapTotalBytes: memory.heapTotal,
+            heapUsedBytes: memory.heapUsed,
+            externalBytes: memory.external,
+            arrayBuffersBytes: memory.arrayBuffers,
+          },
+          cache,
+        });
       }
 
       if (url.pathname === "/") {
