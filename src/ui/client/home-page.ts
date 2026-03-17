@@ -78,7 +78,7 @@ function populateCities(cities: string[]): void {
   citySelect.innerHTML = "";
 
   if (!cities.length) {
-    citySelect.append(new Option("Miestu nerasta", ""));
+    citySelect.append(new Option("Miestų nerasta", ""));
     citySelect.disabled = true;
     return;
   }
@@ -123,12 +123,12 @@ pastToggle.addEventListener("click", () => {
   const isHidden = pastEventsRoot.classList.contains("hidden");
   if (isHidden) {
     pastEventsRoot.classList.remove("hidden");
-    pastToggle.textContent = "Paslepti praejusius ivykius";
+    pastToggle.textContent = "Paslėpti praėjusius grafikus";
     return;
   }
 
   pastEventsRoot.classList.add("hidden");
-  pastToggle.textContent = "Rodyti praejusius ivykius";
+  pastToggle.textContent = "Rodyti praėjusius grafikus";
 });
 
 async function loadEvents(): Promise<void> {
@@ -137,14 +137,14 @@ async function loadEvents(): Promise<void> {
     return;
   }
 
-  setStatus("Ikraunamas grafikas...");
+  setStatus("Įkraunamas grafikas...");
   loadBtn.disabled = true;
   updateBookmarkLink(city);
 
   try {
     const response = await fetch(`/events?keyword=${encodeURIComponent(city)}`);
     if (!response.ok) {
-      throw new Error("Nepavyko gauti ivykiu");
+      throw new Error("Nepavyko gauti grafikų");
     }
 
     const payload = (await response.json()) as EventsPayload;
@@ -327,7 +327,7 @@ async function copyTextToClipboard(value: string): Promise<boolean> {
 function renderSourceFiles(urls: string[]): void {
   if (!urls.length) {
     sourceList.innerHTML =
-      '<p class="mt-1 text-xs text-muted-foreground">Saltiniu nerasta.</p>';
+      '<p class="mt-1 text-xs text-muted-foreground">Šaltinių nerasta.</p>';
     return;
   }
 
@@ -337,7 +337,7 @@ function renderSourceFiles(urls: string[]): void {
       return (
         '<a class="block text-xs text-muted-foreground underline decoration-dotted underline-offset-4" href="' +
         safeUrl +
-        '" target="_blank" rel="noreferrer">XLSX saltinis ' +
+        '" target="_blank" rel="noreferrer">XLSX šaltinis ' +
         String(index + 1) +
         "</a>"
       );
@@ -355,21 +355,21 @@ function renderPastEvents(events: NkomEvent[]): void {
   pastEventsWrap.classList.remove("hidden");
   pastEventsRoot.classList.add("hidden");
   pastCountValue.textContent = String(events.length);
-  pastToggle.textContent = "Rodyti praejusius ivykius";
+  pastToggle.textContent = "Rodyti praėjusius grafikus";
   renderEvents(pastEventsRoot, events);
 }
 
 function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
   if (!events.length) {
     root.innerHTML =
-      '<p class="rounded-md bg-muted px-3 py-3 text-sm text-muted-foreground">Pasirinktam miestui ivykiu nerasta.</p>';
+      '<p class="rounded-md bg-muted px-3 py-3 text-sm text-muted-foreground">Pasirinktam miestui grafikų nerasta.</p>';
     return;
   }
 
   const rows = events
     .map((event) => {
       const date = escapeHtml(event.date || "-");
-      const rawType = event.type || "Nezinomas tipas";
+      const rawType = event.type || "Nežinomas tipas";
       const type = escapeHtml(rawType);
       const icon = escapeHtml(getEventTypeIcon(rawType));
       const link = escapeHtml(event.link || "#");
@@ -388,7 +388,7 @@ function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
         "</div>" +
         '<a href="' +
         link +
-        '" target="_blank" rel="noreferrer" class="inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-xs font-semibold hover:bg-muted">Prideti i kalendoriu</a>' +
+        '" target="_blank" rel="noreferrer" class="inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-xs font-semibold hover:bg-muted">Pridėti į kalendorių</a>' +
         "</article>"
       );
     })

@@ -23,29 +23,29 @@ function AboutPage() {
               Kodėl?
             </h1>
             <p className="mt-4 max-w-3xl text-sm text-muted-foreground sm:text-base">
-              Atsibodo nuolat rankiniu būdu siųstis NKOM Excel failus, ranka juose ieškoti savo miesto ir ranka sukelinėti į kalendorių. Beja ne visi naudoja Microsoft Excel :)
-              Įgyvendinant šį projektą, turbūt blogiausia yra tai, jog patys NKOM Excel failai yra ne sisteminiai ir nestabilūs, juose dažnai keičiasi struktūra, o miestų pavadinimai pateikiami nevienodai.
-              Šiuo metu informacija gaunama iš {SOURCE_PAGE_URL}, surandami joje pateikiami duomenys bei atnaujinami karta per 7-as dienas. Visa agreguota informacija pateikiama per API
+              Atsibodo nuolatos rankiniu būdu siųstis „NKOM Excel“ failus, ranka juose ieškoti savo miesto ir ranka sukelinėti į kalendorių. Beje, ne visi naudoja „Microsoft Excel“ :).
+              Įgyvendinant šį projektą, turbūt blogiausia yra tai, jog patys „NKOM Excel“ failai yra ne sisteminiai ir nestabilūs, juose dažnai keičiasi struktūra, o miestų pavadinimai pateikiami nevienodai.
+              Šiuo metu informacija gaunama iš {SOURCE_PAGE_URL}, surandami joje pateikiami duomenys bei atnaujinami kartą per 7-ias dienas. Visa agreguota informacija pateikiama per „API“
             </p>
           </section>
 
           <section className="stagger-1 hero-enter mt-6 grid gap-4 sm:grid-cols-2">
             <article className="rounded-2xl border border-border bg-card/85 p-5 shadow-sm">
-              <h2 className="text-lg font-bold">Kam skirtas</h2>
+              <h2 className="text-lg font-bold">Kam skirtas?</h2>
               <p className="mt-3 text-sm text-muted-foreground">
-                Puslapis skirtas NKOM klientams, kurie nori greitai pasirinktam
+                Puslapis skirtas „NKOM“ klientams, kurie nori greitai pasirinktam
                 miestui matyti artimiausius atliekų išvežimo grafikus.
               </p>
               <p className="mt-2 text-sm text-muted-foreground">
                 Tuo pačiu projektas skirtas ir developeriams, kuriems reikia
-                patikimo JSON API integracijoms, automatizacijoms ar papildomoms
+                patikimo „JSON API“ integracijoms, automatizacijoms ar papildomoms
                 klientų aplikacijoms.
               </p>
             </article>
             <article className="rounded-2xl border border-border bg-card/85 p-5 shadow-sm">
               <h2 className="text-lg font-bold">Svarbu žinoti</h2>
               <p className="mt-3 text-sm text-muted-foreground">
-                Aš nedirbu NKOM'e ir nesu kaip nors su jais susijęs - Todėl pamatę kažką neaiškaus ar neatitikimus pirmiausia pasitikrinkite juos
+                Aš nedirbu „NKOM'e“ ir nesu kaip nors su jais susijęs - Todėl pamatę kokius nors neatitikimus pirmiausia pasitikrinkite juos
                 <a
                   className="ml-1 font-semibold underline decoration-dotted underline-offset-4"
                   href={`${SOURCE_PAGE_URL}`}
@@ -64,10 +64,10 @@ function AboutPage() {
           </section>
 
           <section className="stagger-2 hero-enter mt-6 rounded-2xl border border-border bg-card/90 p-4 shadow-lg shadow-orange-100/50 sm:p-6">
-            <h2 className="text-lg font-bold sm:text-xl">API dokumentacija</h2>
+            <h2 className="text-lg font-bold sm:text-xl">„API“ dokumentacija</h2>
             <p className="mt-2 text-sm text-muted-foreground">
-              Žemiau pateikti API endpointai. Visi
-              atsakymai grąžinami JSON formatu.
+              Žemiau pateikti „API“ endpointai. Visi
+              atsakymai grąžinami „JSON“ formatu.
             </p>
 
             <div className="mt-5 space-y-4">

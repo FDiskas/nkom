@@ -18,14 +18,14 @@ function HomePage() {
             <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
               <div>
                 <p className="mb-3 inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
-                  NKOM klientams
+                  „NKOM“ klientams
                 </p>
                 <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">
                   Atliekų išvežimo grafikai
                 </h1>
                 <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base">
-                  Pasirinkite miestą iš sąrašo, gauto tiesiogiai iš NKOM XLSX
-                  failų, ir gaukite artimiausius šiukšlių išvežimo laikus su nuorodomis į google kalendorių.
+                  Pasirinkite miestą iš sąrašo, gauto tiesiogiai iš „NKOM“ XLSX
+                  failų, ir gaukite artimiausius šiukšlių išvežimo laikus su nuorodomis į „Google“ kalendorių.
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-background/90 p-4">
@@ -62,7 +62,7 @@ function HomePage() {
             </article>
             <article className="rounded-2xl border border-border bg-card/85 p-4 shadow-sm">
               <p className="text-xs uppercase tracking-wide text-muted-foreground">
-                Rastų įvykių
+                Rastų grafikų
               </p>
               <p id="countValue" className="mt-1 text-2xl font-extrabold">
                 -
