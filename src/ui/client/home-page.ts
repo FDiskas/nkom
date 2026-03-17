@@ -369,13 +369,17 @@ function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
   const rows = events
     .map((event) => {
       const date = escapeHtml(event.date || "-");
-      const type = escapeHtml(event.type || "Nezinomas tipas");
+      const rawType = event.type || "Nezinomas tipas";
+      const type = escapeHtml(rawType);
+      const icon = escapeHtml(getEventTypeIcon(rawType));
       const link = escapeHtml(event.link || "#");
 
       return (
         '<article class="grid gap-3 rounded-xl border border-border bg-background/80 p-4 sm:grid-cols-[1fr_auto]">' +
         "<div>" +
         '<p class="text-sm font-semibold">' +
+        icon +
+        " " +
         type +
         "</p>" +
         '<p class="text-xs text-muted-foreground">Data: ' +
@@ -391,6 +395,27 @@ function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
     .join("");
 
   root.innerHTML = rows;
+}
+
+function getEventTypeIcon(type: string): string {
+  const normalized = String(type)
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+  if (normalized.includes("misri")) {
+    return "🗑️";
+  }
+
+  if (normalized.includes("pakuot")) {
+    return "♻️";
+  }
+
+  if (normalized.includes("stikl")) {
+    return "🍾";
+  }
+
+  return "📅";
 }
 
 function splitEventsByDate(events: NkomEvent[]): {

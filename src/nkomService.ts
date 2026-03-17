@@ -11,6 +11,12 @@ type CacheMeta = {
   binary: boolean;
 };
 
+type MonthColumn = {
+  columnIndex: number;
+  month: number;
+  eventType: string | null;
+};
+
 export type CacheDiagnostics = {
   cacheDir: string;
   ttlHours: number;
@@ -55,12 +61,17 @@ export async function generateCalendarEvents(
         continue;
       }
 
-      const dates = extractDatesFromRow(row, monthColumns, scheduleYear);
-      for (const date of dates) {
+      const rowEvents = extractDatesFromRow(
+        row,
+        monthColumns,
+        scheduleYear,
+        file.type,
+      );
+      for (const rowEvent of rowEvents) {
         events.push({
-          type: file.type,
-          date,
-          link: createGoogleCalendarLink(file.type, date, keyword),
+          type: rowEvent.type,
+          date: rowEvent.date,
+          link: createGoogleCalendarLink(rowEvent.type, rowEvent.date, keyword),
           sourceFileUrl: file.url,
           keyword,
         });
@@ -559,19 +570,74 @@ function extractScheduleYear(data: CellValue[][]): number | null {
   return null;
 }
 
-function extractMonthColumns(data: CellValue[][]): Map<number, number> {
-  const monthColumns = new Map<number, number>();
+function extractMonthColumns(data: CellValue[][]): MonthColumn[] {
+  let bestRowMonths = new Map<number, number>();
+  let bestRowIndex = -1;
 
-  data.forEach((row) => {
+  data.forEach((row, rowIndex) => {
+    const rowMonths = new Map<number, number>();
+
     row.forEach((cell, columnIndex) => {
       const month = getMonthNumber(cell);
       if (month !== null) {
-        monthColumns.set(columnIndex, month);
+        rowMonths.set(columnIndex, month);
       }
     });
+
+    if (rowMonths.size > bestRowMonths.size) {
+      bestRowMonths = rowMonths;
+      bestRowIndex = rowIndex;
+    }
   });
 
-  return monthColumns;
+  if (bestRowMonths.size < 2) {
+    return [];
+  }
+
+  const sectionRow = bestRowIndex > 0 ? data[bestRowIndex - 1] : undefined;
+  return [...bestRowMonths.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([columnIndex, month]) => ({
+      columnIndex,
+      month,
+      eventType: sectionRow
+        ? inferEventTypeFromSectionRow(sectionRow, columnIndex)
+        : null,
+    }));
+}
+
+function inferEventTypeFromSectionRow(
+  sectionRow: CellValue[],
+  columnIndex: number,
+): string | null {
+  for (let cursor = columnIndex; cursor >= 0; cursor -= 1) {
+    const value = sectionRow[cursor];
+    if (typeof value !== "string") {
+      continue;
+    }
+
+    const normalized = normalizeText(value).trim();
+    if (!normalized) {
+      continue;
+    }
+
+    if (normalized.includes("stikl")) {
+      return "Stiklas";
+    }
+
+    if (
+      normalized.includes("pakuot") ||
+      normalized.includes("plast") ||
+      normalized.includes("popier") ||
+      normalized.includes("metal")
+    ) {
+      return "Pakuotės";
+    }
+
+    return null;
+  }
+
+  return null;
 }
 
 function getMonthNumber(value: CellValue): number | null {
@@ -629,22 +695,24 @@ function normalizeText(value: string): string {
 
 function extractDatesFromRow(
   row: CellValue[],
-  monthColumns: Map<number, number>,
+  monthColumns: MonthColumn[],
   year: number,
-): string[] {
-  const dates = new Set<string>();
+  defaultType: string,
+): Array<{ type: string; date: string }> {
+  const dates = new Map<string, { type: string; date: string }>();
 
-  for (const [columnIndex, month] of monthColumns) {
-    const days = parseDays(row[columnIndex]);
+  for (const column of monthColumns) {
+    const days = parseDays(row[column.columnIndex]);
     for (const day of days) {
-      const date = buildIsoDate(year, month, day);
+      const date = buildIsoDate(year, column.month, day);
       if (date) {
-        dates.add(date);
+        const eventType = column.eventType ?? defaultType;
+        dates.set(`${eventType}|${date}`, { type: eventType, date });
       }
     }
   }
 
-  return [...dates].sort();
+  return [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
 function parseDays(value: CellValue): number[] {
@@ -665,7 +733,7 @@ function parseDays(value: CellValue): number[] {
     return [];
   }
 
-  const matches = trimmed.match(/\d{1,2}/g);
+  const matches = trimmed.match(/(?<!\d)\d{1,2}(?!\d)/g);
   if (!matches) {
     return [];
   }
@@ -698,15 +766,34 @@ function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+function getEventTypeIcon(type: string): string {
+  const normalized = normalizeText(type);
+
+  if (normalized.includes("misri")) {
+    return "🗑️";
+  }
+
+  if (normalized.includes("pakuot")) {
+    return "♻️";
+  }
+
+  if (normalized.includes("stikl")) {
+    return "🍾";
+  }
+
+  return "📅";
+}
+
 function createGoogleCalendarLink(
   type: string,
   date: string,
   keyword: string,
 ): string {
   const base = "https://www.google.com/calendar/render?action=TEMPLATE";
-  const eventName = encodeURIComponent(`Šiukšlių išvežimas: ${type}`);
+  const icon = getEventTypeIcon(type);
+  const eventName = encodeURIComponent(`${icon} Šiukšlių išvežimas: ${type}`);
   const details = encodeURIComponent(
-    `NKOM ${type} grafikas vietovei: ${keyword}\nŠaltinis: ${SOURCE_PAGE_URL}`,
+    `NKOM ${type} ${SOURCE_PAGE_URL}\nNepamirškite atsinaujinti: https://nkom.coders.lt/?city=${keyword}`,
   );
   const dateStr = date.replace(/-/g, "");
   const nextDay = new Date(new Date(date).getTime() + 86400000)

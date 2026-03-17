@@ -32,6 +32,7 @@ export async function startServer(): Promise<void> {
 
       if (url.pathname === "/health") {
         const memory = process.memoryUsage();
+        const rssBytes = memory.rss;
         const cache = await getCacheDiagnostics();
         return jsonResponse({
           ok: true,
@@ -43,11 +44,7 @@ export async function startServer(): Promise<void> {
           platform: process.platform,
           pid: process.pid,
           memory: {
-            rssBytes: memory.rss,
-            heapTotalBytes: memory.heapTotal,
-            heapUsedBytes: memory.heapUsed,
-            externalBytes: memory.external,
-            arrayBuffersBytes: memory.arrayBuffers,
+            usedMb: Number((rssBytes / (1024 * 1024)).toFixed(2)),
           },
           cache,
         });

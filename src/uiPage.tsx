@@ -20,12 +20,11 @@ function HomePage() {
                   NKOM klientams
                 </p>
                 <h1 className="text-3xl font-extrabold leading-tight sm:text-4xl">
-                  Atliekų išvežimo grafikas Jūsų miestui
+                  Atliekų išvežimo grafikai
                 </h1>
                 <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base">
                   Pasirinkite miestą iš sąrašo, gauto tiesiogiai iš NKOM XLSX
-                  failų, ir gaukite artimiausius šiukšlių išvežimo laikus su greitomis
-                  nuorodomis į google kalendorių.
+                  failų, ir gaukite artimiausius šiukšlių išvežimo laikus su nuorodomis į google kalendorių.
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-background/90 p-4">
