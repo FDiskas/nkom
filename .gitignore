@@ -4,7 +4,8 @@ node_modules
 # output
 out
 dist
-public/assets
+public/assets/*
+!public/assets/favicon.svg
 *.tgz
 
 # code coverage
