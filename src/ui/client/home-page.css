@@ -34,6 +34,16 @@ body {
   animation-delay: 220ms;
 }
 
+.calendar-link {
+  transition: background-color 180ms ease, border-color 180ms ease;
+}
+
+.calendar-link:visited {
+  background-color: hsl(106 48% 90%);
+  border-color: hsl(106 28% 72%);
+  color: hsl(118 22% 26%);
+}
+
 @keyframes riseIn {
   from {
     opacity: 0;

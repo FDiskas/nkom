@@ -388,7 +388,7 @@ function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
         "</div>" +
         '<a href="' +
         link +
-        '" target="_blank" rel="noreferrer" class="inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-xs font-semibold hover:bg-muted">Pridėti į kalendorių</a>' +
+        '" target="_blank" rel="noreferrer" class="calendar-link inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-xs font-semibold hover:bg-muted">Pridėti į kalendorių</a>' +
         "</article>"
       );
     })
