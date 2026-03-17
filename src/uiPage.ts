@@ -1,0 +1,299 @@
+export function renderHomePage(): string {
+  return `<!doctype html>
+<html lang="lt">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NKOM Atlieku Grafikas</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ["Manrope", "ui-sans-serif", "system-ui"],
+            },
+            colors: {
+              border: "hsl(var(--border))",
+              input: "hsl(var(--input))",
+              ring: "hsl(var(--ring))",
+              background: "hsl(var(--background))",
+              foreground: "hsl(var(--foreground))",
+              primary: {
+                DEFAULT: "hsl(var(--primary))",
+                foreground: "hsl(var(--primary-foreground))",
+              },
+              secondary: {
+                DEFAULT: "hsl(var(--secondary))",
+                foreground: "hsl(var(--secondary-foreground))",
+              },
+              muted: {
+                DEFAULT: "hsl(var(--muted))",
+                foreground: "hsl(var(--muted-foreground))",
+              },
+              card: {
+                DEFAULT: "hsl(var(--card))",
+                foreground: "hsl(var(--card-foreground))",
+              },
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap");
+
+      :root {
+        --background: 44 33% 97%;
+        --foreground: 20 15% 12%;
+        --card: 0 0% 100%;
+        --card-foreground: 20 15% 12%;
+        --primary: 24 91% 53%;
+        --primary-foreground: 0 0% 100%;
+        --secondary: 45 60% 90%;
+        --secondary-foreground: 22 35% 20%;
+        --muted: 38 45% 93%;
+        --muted-foreground: 24 18% 35%;
+        --border: 28 24% 82%;
+        --input: 26 25% 80%;
+        --ring: 24 91% 53%;
+      }
+
+      body {
+        background: radial-gradient(circle at 10% 10%, #ffe5bd 0%, transparent 40%),
+          radial-gradient(circle at 90% 20%, #ffd7c2 0%, transparent 35%),
+          linear-gradient(160deg, #fffdf8 0%, #fef8ef 100%);
+      }
+
+      .hero-enter {
+        animation: riseIn 600ms ease-out both;
+      }
+
+      .stagger-1 {
+        animation-delay: 120ms;
+      }
+
+      .stagger-2 {
+        animation-delay: 220ms;
+      }
+
+      @keyframes riseIn {
+        from {
+          opacity: 0;
+          transform: translateY(18px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+    </style>
+  </head>
+  <body class="font-display text-foreground min-h-screen">
+    <main class="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+      <section class="hero-enter rounded-3xl border border-border/70 bg-card/90 p-6 shadow-lg shadow-orange-200/40 backdrop-blur sm:p-8">
+        <div class="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
+          <div>
+            <p class="mb-3 inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
+              NKOM klientu savitarna
+            </p>
+            <h1 class="text-3xl font-extrabold leading-tight sm:text-4xl">
+              Atlieku isvezimo grafikas Jusu miestui
+            </h1>
+            <p class="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base">
+              Pasirinkite miesta is saraso, gauto tiesiogiai is NKOM XLSX failu, ir gaukite artimiausius isvezimo ivykius su greitomis nuorodomis i kalendoriu.
+            </p>
+          </div>
+          <div class="rounded-2xl border border-border bg-background/90 p-4">
+            <label for="citySelect" class="mb-2 block text-sm font-semibold">Miestas</label>
+            <select id="citySelect" class="h-11 w-full rounded-md border border-input bg-card px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring" disabled>
+              <option>Kraunama...</option>
+            </select>
+            <button id="loadBtn" class="mt-3 inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55" disabled>
+              Rodyti grafika
+            </button>
+            <p id="statusText" class="mt-3 min-h-5 text-xs text-muted-foreground"></p>
+          </div>
+        </div>
+      </section>
+
+      <section class="stagger-1 hero-enter mt-6 grid gap-4 sm:grid-cols-3">
+        <article class="rounded-2xl border border-border bg-card/85 p-4 shadow-sm">
+          <p class="text-xs uppercase tracking-wide text-muted-foreground">Rastu ivykiu</p>
+          <p id="countValue" class="mt-1 text-2xl font-extrabold">-</p>
+        </article>
+        <article class="rounded-2xl border border-border bg-card/85 p-4 shadow-sm">
+          <p class="text-xs uppercase tracking-wide text-muted-foreground">Pasirinktas miestas</p>
+          <p id="cityValue" class="mt-1 truncate text-xl font-bold">-</p>
+        </article>
+        <article class="rounded-2xl border border-border bg-card/85 p-4 shadow-sm">
+          <p class="text-xs uppercase tracking-wide text-muted-foreground">Saltinio failai</p>
+          <p id="sourceValue" class="mt-1 text-xl font-bold">-</p>
+        </article>
+      </section>
+
+      <section class="stagger-2 hero-enter mt-6 rounded-2xl border border-border bg-card/90 p-4 shadow-lg shadow-orange-100/50 sm:p-6">
+        <div class="mb-4 flex items-center justify-between gap-3">
+          <h2 class="text-lg font-bold sm:text-xl">Artimiausi isvezimo ivykiai</h2>
+          <a href="/health" class="text-xs font-semibold text-muted-foreground underline decoration-dotted underline-offset-4">API diagnostika</a>
+        </div>
+        <div id="eventsRoot" class="space-y-3">
+          <p class="rounded-md bg-muted px-3 py-3 text-sm text-muted-foreground">Pasirinkite miesta, kad uzkrauti grafika.</p>
+        </div>
+      </section>
+    </main>
+
+    <script>
+      const citySelect = document.getElementById("citySelect");
+      const loadBtn = document.getElementById("loadBtn");
+      const statusText = document.getElementById("statusText");
+      const eventsRoot = document.getElementById("eventsRoot");
+      const countValue = document.getElementById("countValue");
+      const cityValue = document.getElementById("cityValue");
+      const sourceValue = document.getElementById("sourceValue");
+
+      void init();
+
+      async function init() {
+        try {
+          setStatus("Ikraunamas miestu sarasas...");
+          const response = await fetch("/cities");
+          if (!response.ok) {
+            throw new Error("Nepavyko gauti miestu saraso");
+          }
+
+          const payload = await response.json();
+          const cities = Array.isArray(payload.cities) ? payload.cities : [];
+          populateCities(cities);
+          setStatus("Rasta " + cities.length + " miestu");
+          loadBtn.disabled = cities.length === 0;
+
+          if (cities.length > 0) {
+            await loadEvents();
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(message, true);
+          citySelect.innerHTML = "<option>Klaida kraunant duomenis</option>";
+        }
+      }
+
+      function populateCities(cities) {
+        citySelect.innerHTML = "";
+
+        if (!cities.length) {
+          citySelect.append(new Option("Miestu nerasta", ""));
+          citySelect.disabled = true;
+          return;
+        }
+
+        for (const city of cities) {
+          citySelect.append(new Option(city, city));
+        }
+
+        citySelect.disabled = false;
+      }
+
+      loadBtn.addEventListener("click", () => {
+        void loadEvents();
+      });
+
+      citySelect.addEventListener("change", () => {
+        void loadEvents();
+      });
+
+      async function loadEvents() {
+        const city = citySelect.value;
+        if (!city) {
+          return;
+        }
+
+        setStatus("Ikraunamas grafikas...");
+        loadBtn.disabled = true;
+
+        try {
+          const response = await fetch(
+            "/events?keyword=" + encodeURIComponent(city),
+          );
+          if (!response.ok) {
+            throw new Error("Nepavyko gauti ivykiu");
+          }
+
+          const payload = await response.json();
+          const events = Array.isArray(payload.events) ? payload.events : [];
+          renderEvents(events);
+
+          countValue.textContent = String(payload.count ?? events.length ?? 0);
+          cityValue.textContent = payload.keyword || city;
+          const sources = new Set(events.map((event) => event.sourceFileUrl));
+          sourceValue.textContent = String(sources.size);
+
+          setStatus("Grafikas sekmingai atnaujintas");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          setStatus(message, true);
+          eventsRoot.innerHTML =
+            '<p class="rounded-md bg-red-50 px-3 py-3 text-sm text-red-700">' +
+            escapeHtml(message) +
+            "</p>";
+        } finally {
+          loadBtn.disabled = false;
+        }
+      }
+
+      function renderEvents(events) {
+        if (!events.length) {
+          eventsRoot.innerHTML = '<p class="rounded-md bg-muted px-3 py-3 text-sm text-muted-foreground">Pasirinktam miestui ivykiu nerasta.</p>';
+          return;
+        }
+
+        const rows = events
+          .map((event) => {
+            const date = escapeHtml(event.date || "-");
+            const type = escapeHtml(event.type || "Nezinomas tipas");
+            const sourceFileUrl = escapeHtml(event.sourceFileUrl || "#");
+            const link = escapeHtml(event.link || "#");
+
+            return (
+              '<article class="grid gap-3 rounded-xl border border-border bg-background/80 p-4 sm:grid-cols-[1fr_auto]">' +
+              "<div>" +
+              '<p class="text-sm font-semibold">' +
+              type +
+              "</p>" +
+              '<p class="text-xs text-muted-foreground">Data: ' +
+              date +
+              "</p>" +
+              '<a class="mt-1 inline-block text-xs text-muted-foreground underline decoration-dotted underline-offset-4" href="' +
+              sourceFileUrl +
+              '" target="_blank" rel="noreferrer">XLSX saltinis</a>' +
+              "</div>" +
+              '<a href="' +
+              link +
+              '" target="_blank" rel="noreferrer" class="inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-xs font-semibold hover:bg-muted">Prideti i kalendoriu</a>' +
+              "</article>"
+            );
+          })
+          .join("");
+
+        eventsRoot.innerHTML = rows;
+      }
+
+      function setStatus(message, isError = false) {
+        statusText.textContent = message;
+        statusText.className = isError
+          ? "mt-3 min-h-5 text-xs text-red-700"
+          : "mt-3 min-h-5 text-xs text-muted-foreground";
+      }
+
+      function escapeHtml(value) {
+        return String(value)
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+    </script>
+  </body>
+</html>`;
+}
