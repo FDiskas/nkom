@@ -6,7 +6,8 @@ function HomePage() {
       <head>
         <meta charSet="UTF-8" />
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>NKOM Atlieku Grafikas</title>
+        <title>NKOM Atliekų išvežimo grafikas</title>
+        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
         <link rel="stylesheet" href="/assets/home-page.css" />
         <script src="https://cdn.tailwindcss.com"></script>
         <script src="/assets/tailwind-config.js"></script>
@@ -118,6 +119,12 @@ function HomePage() {
           </section>
 
           <footer className="mt-8 pb-3 text-center">
+            <a
+              href="/apie"
+              className="mr-4 text-xs font-semibold text-muted-foreground underline decoration-dotted underline-offset-4"
+            >
+              Apie projekta
+            </a>
             <a
               href="/health"
               className="text-xs font-semibold text-muted-foreground underline decoration-dotted underline-offset-4"

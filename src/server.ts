@@ -7,6 +7,7 @@ import {
 } from "./nkomService.ts";
 import { mkdir } from "node:fs/promises";
 import { renderHomePage } from "./uiPage.tsx";
+import { renderAboutPage } from "./aboutPage.tsx";
 
 const DEFAULT_KEYWORD = "Kalviškės";
 const UI_ASSET_OUT_DIR = "./public/assets";
@@ -14,6 +15,7 @@ const UI_ASSET_OUT_DIR = "./public/assets";
 const UI_ASSET_MIME: Record<string, string> = {
   ".js": "text/javascript; charset=utf-8",
   ".css": "text/css; charset=utf-8",
+  ".svg": "image/svg+xml; charset=utf-8",
 };
 
 const UI_BUILD_ENTRYPOINTS = [
@@ -52,6 +54,10 @@ export async function startServer(): Promise<void> {
 
       if (url.pathname === "/") {
         return htmlResponse(renderHomePage());
+      }
+
+      if (url.pathname === "/apie") {
+        return htmlResponse(renderAboutPage());
       }
 
       if (url.pathname.startsWith("/assets/")) {
