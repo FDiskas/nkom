@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { SiteFooter } from "./siteFooter";
 
 function HomePage() {
   return (
@@ -8,9 +9,11 @@ function HomePage() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>NKOM Atliekų išvežimo grafikas</title>
         <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+        />
         <link rel="stylesheet" href="/assets/home-page.css" />
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script src="/assets/tailwind-config.js"></script>
       </head>
       <body className="font-display text-foreground min-h-screen">
         <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
@@ -24,13 +27,13 @@ function HomePage() {
                   Atliekų išvežimo grafikai
                 </h1>
                 <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base">
-                  Pasirinkite miestą iš sąrašo, gauto tiesiogiai iš „NKOM“ XLSX
+                  Pasirinkite gyvenvietę iš sąrašo, gauto tiesiogiai iš „NKOM“ XLSX
                   failų, ir gaukite artimiausius šiukšlių išvežimo laikus su nuorodomis į „Google“ kalendorių.
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-background/90 p-4">
                 <label htmlFor="citySelect" className="mb-2 block text-sm font-semibold">
-                  Miestas
+                  Gyvenvietė
                 </label>
                 <select
                   id="citySelect"
@@ -118,20 +121,7 @@ function HomePage() {
             </div>
           </section>
 
-          <footer className="mt-8 pb-3 text-center">
-            <a
-              href="/apie"
-              className="mr-4 text-xs font-semibold text-muted-foreground underline decoration-dotted underline-offset-4"
-            >
-              Apie projekta
-            </a>
-            <a
-              href="/health"
-              className="text-xs font-semibold text-muted-foreground underline decoration-dotted underline-offset-4"
-            >
-              API diagnostika
-            </a>
-          </footer>
+          <SiteFooter />
         </main>
         <script src="/assets/home-page.js" defer></script>
       </body>

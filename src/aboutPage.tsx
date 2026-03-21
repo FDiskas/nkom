@@ -1,5 +1,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { SOURCE_PAGE_URL } from "./nkomService";
+import { SiteFooter } from "./siteFooter";
 
 function AboutPage() {
   return (
@@ -9,9 +10,11 @@ function AboutPage() {
         <meta name="viewport" content="width=device-width, initial-scale=1.0" />
         <title>Apie projektą | NKOM Atliekų išvežimo grafikas</title>
         <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
+        <link
+          rel="stylesheet"
+          href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+        />
         <link rel="stylesheet" href="/assets/home-page.css" />
-        <script src="https://cdn.tailwindcss.com"></script>
-        <script src="/assets/tailwind-config.js"></script>
       </head>
       <body className="font-display text-foreground min-h-screen">
         <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
@@ -128,20 +131,7 @@ function AboutPage() {
             </div>
           </section>
 
-          <footer className="mt-8 pb-3 text-center">
-            <a
-              href="/"
-              className="mr-4 text-xs font-semibold text-muted-foreground underline decoration-dotted underline-offset-4"
-            >
-              Grįžti į pagrindinį
-            </a>
-            <a
-              href="/health"
-              className="text-xs font-semibold text-muted-foreground underline decoration-dotted underline-offset-4"
-            >
-              API diagnostika
-            </a>
-          </footer>
+          <SiteFooter />
         </main>
       </body>
     </html>

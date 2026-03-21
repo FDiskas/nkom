@@ -3,12 +3,14 @@
   "module": "index.ts",
   "type": "module",
   "scripts": {
-    "start": "bun ./index.ts"
+    "start": "bun ./index.ts",
+    "dev": "bun --hot --watch run ./index.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/react": "^19.2.14",
-    "@types/react-dom": "^19.2.3"
+    "@types/react-dom": "^19.2.3",
+    "tailwindcss": "3.4.17"
   },
   "peerDependencies": {
     "typescript": "^5"

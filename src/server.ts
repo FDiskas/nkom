@@ -18,10 +18,7 @@ const UI_ASSET_MIME: Record<string, string> = {
   ".svg": "image/svg+xml; charset=utf-8",
 };
 
-const UI_BUILD_ENTRYPOINTS = [
-  "./src/ui/client/home-page.ts",
-  "./src/ui/client/tailwind-config.ts",
-];
+const UI_BUILD_ENTRYPOINTS = ["./src/ui/client/home-page.ts"];
 
 export async function startServer(): Promise<void> {
   await buildUiAssets();
@@ -109,11 +106,7 @@ export async function startServer(): Promise<void> {
 
 async function buildUiAssets(): Promise<void> {
   await mkdir(UI_ASSET_OUT_DIR, { recursive: true });
-
-  await Bun.write(
-    `${UI_ASSET_OUT_DIR}/home-page.css`,
-    Bun.file("./src/ui/client/home-page.css"),
-  );
+  await buildTailwindCss();
 
   const build = await Bun.build({
     entrypoints: UI_BUILD_ENTRYPOINTS,
@@ -133,6 +126,47 @@ async function buildUiAssets(): Promise<void> {
         .join("\n") || "Unknown build error";
     throw new Error(`Failed to build UI assets:\n${details}`);
   }
+}
+
+async function buildTailwindCss(): Promise<void> {
+  const outputPath = `${UI_ASSET_OUT_DIR}/home-page.css`;
+
+  const process = Bun.spawn(
+    [
+      "bunx",
+      "tailwindcss",
+      "-i",
+      "./src/ui/client/home-page.tailwind.css",
+      "-o",
+      outputPath,
+      "--config",
+      "./tailwind.config.cjs",
+      "--minify",
+    ],
+    {
+      stdout: "pipe",
+      stderr: "pipe",
+    },
+  );
+
+  const [exitCode, stdout, stderr] = await Promise.all([
+    process.exited,
+    new Response(process.stdout).text(),
+    new Response(process.stderr).text(),
+  ]);
+
+  if (exitCode !== 0) {
+    const logs = [stdout, stderr].filter(Boolean).join("\n").trim();
+    throw new Error(`Failed to build Tailwind CSS${logs ? `:\n${logs}` : ""}`);
+  }
+
+  // Tailwind CLI does not inline our local stylesheet import here, so append it explicitly.
+  const [tailwindCss, customCss] = await Promise.all([
+    Bun.file(outputPath).text(),
+    Bun.file("./src/ui/client/home-page.css").text(),
+  ]);
+
+  await Bun.write(outputPath, `${tailwindCss}\n${customCss}`);
 }
 
 async function assetResponse(pathname: string): Promise<Response> {
