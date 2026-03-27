@@ -95,8 +95,21 @@ loadBtn.addEventListener("click", () => {
 });
 
 citySelect.addEventListener("change", () => {
-  updateBookmarkLink(citySelect.value);
+  updateBookmarkLink(citySelect.value, true);
   void loadEvents();
+});
+
+window.addEventListener("popstate", () => {
+  const cityFromUrl = new URL(window.location.href).searchParams.get("city");
+  if (!cityFromUrl) {
+    return;
+  }
+
+  const match = [...citySelect.options].find((opt) => opt.value === cityFromUrl);
+  if (match && citySelect.value !== cityFromUrl) {
+    citySelect.value = cityFromUrl;
+    void loadEvents();
+  }
 });
 
 copyBookmarkBtn.addEventListener("click", async () => {
@@ -225,7 +238,7 @@ function applyCityFromUrl(cities: string[]): void {
   }
 }
 
-function updateBookmarkLink(city: string): void {
+function updateBookmarkLink(city: string, push = false): void {
   const currentUrl = new URL(window.location.href);
   if (city) {
     currentUrl.searchParams.set("city", city);
@@ -234,7 +247,12 @@ function updateBookmarkLink(city: string): void {
   }
 
   const nextUrl = currentUrl.toString();
-  history.replaceState(null, "", nextUrl);
+  if (push) {
+    history.pushState(null, "", nextUrl);
+  } else {
+    history.replaceState(null, "", nextUrl);
+  }
+
   bookmarkLink.setAttribute("href", nextUrl);
   bookmarkLink.setAttribute("title", nextUrl);
   copyBookmarkBtn.disabled = !city;
