@@ -18,6 +18,9 @@ type EventsPayload = {
 };
 
 const citySelect = getRequiredElement<HTMLSelectElement>("citySelect");
+const citySearch = getRequiredElement<HTMLInputElement>("citySearch");
+const cityOptions = getRequiredElement<HTMLUListElement>("cityOptions");
+const comboRoot = getRequiredElement<HTMLDivElement>("comboRoot");
 const loadBtn = getRequiredElement<HTMLButtonElement>("loadBtn");
 const statusText = getRequiredElement<HTMLParagraphElement>("statusText");
 const eventsRoot = getRequiredElement<HTMLDivElement>("eventsRoot");
@@ -51,6 +54,7 @@ async function init(): Promise<void> {
       : [];
     populateCities(cities);
     applyCityFromUrl(cities);
+    syncSearchFromSelect();
     updateBookmarkLink(citySelect.value);
     setStatus(`Rasta ${cities.length} miestu`);
     loadBtn.disabled = cities.length === 0;
@@ -76,10 +80,13 @@ function getRequiredElement<T extends HTMLElement>(id: string): T {
 
 function populateCities(cities: string[]): void {
   citySelect.innerHTML = "";
+  comboCities = cities;
 
   if (!cities.length) {
     citySelect.append(new Option("Miestų nerasta", ""));
     citySelect.disabled = true;
+    citySearch.disabled = true;
+    citySearch.placeholder = "Miestų nerasta";
     return;
   }
 
@@ -88,7 +95,172 @@ function populateCities(cities: string[]): void {
   }
 
   citySelect.disabled = false;
+  citySearch.disabled = false;
+  citySearch.placeholder = "Ieškoti gyvenvietės...";
 }
+
+let comboCities: string[] = [];
+let filteredCities: string[] = [];
+let activeIndex = -1;
+
+function syncSearchFromSelect(): void {
+  citySearch.value = citySelect.value || "";
+}
+
+function isListOpen(): boolean {
+  return !cityOptions.classList.contains("hidden");
+}
+
+function openList(): void {
+  cityOptions.classList.remove("hidden");
+  citySearch.setAttribute("aria-expanded", "true");
+}
+
+function closeList(): void {
+  cityOptions.classList.add("hidden");
+  citySearch.setAttribute("aria-expanded", "false");
+  activeIndex = -1;
+}
+
+function filterCities(query: string): void {
+  const normalizedQuery = normalizeCityToken(query);
+  const keyedQuery = toCityMatchKey(query);
+
+  filteredCities = !normalizedQuery
+    ? comboCities.slice()
+    : comboCities.filter((city) => {
+        const normalizedCity = normalizeCityToken(city);
+        if (normalizedCity.includes(normalizedQuery)) {
+          return true;
+        }
+        return keyedQuery
+          ? toCityMatchKey(city).includes(keyedQuery)
+          : false;
+      });
+
+  activeIndex = filteredCities.length ? 0 : -1;
+  renderOptions();
+}
+
+function renderOptions(): void {
+  if (!filteredCities.length) {
+    cityOptions.innerHTML =
+      '<li class="px-3 py-2 text-muted-foreground">Nieko nerasta</li>';
+    return;
+  }
+
+  cityOptions.innerHTML = filteredCities
+    .map((city, index) => {
+      const isActive = index === activeIndex;
+      const isSelected = city === citySelect.value;
+      const classes =
+        "cursor-pointer px-3 py-2" + (isActive ? " bg-muted" : "");
+      return (
+        '<li id="cityOption-' +
+        String(index) +
+        '" role="option" data-index="' +
+        String(index) +
+        '" data-value="' +
+        escapeHtml(city) +
+        '" aria-selected="' +
+        String(isSelected) +
+        '" class="' +
+        classes +
+        '">' +
+        escapeHtml(city) +
+        "</li>"
+      );
+    })
+    .join("");
+
+  const activeId = activeIndex >= 0 ? `cityOption-${activeIndex}` : "";
+  if (activeId) {
+    citySearch.setAttribute("aria-activedescendant", activeId);
+    cityOptions
+      .querySelector(`#${activeId}`)
+      ?.scrollIntoView({ block: "nearest" });
+  } else {
+    citySearch.removeAttribute("aria-activedescendant");
+  }
+}
+
+function moveActive(delta: number): void {
+  if (!filteredCities.length) {
+    return;
+  }
+
+  activeIndex =
+    (activeIndex + delta + filteredCities.length) % filteredCities.length;
+  renderOptions();
+}
+
+function chooseCity(city: string): void {
+  if (!city) {
+    return;
+  }
+
+  citySelect.value = city;
+  citySearch.value = city;
+  closeList();
+  updateBookmarkLink(city, true);
+  void loadEvents();
+}
+
+citySearch.addEventListener("focus", () => {
+  filterCities("");
+  openList();
+});
+
+citySearch.addEventListener("input", () => {
+  filterCities(citySearch.value);
+  openList();
+});
+
+citySearch.addEventListener("keydown", (event) => {
+  if (event.key === "ArrowDown") {
+    event.preventDefault();
+    if (!isListOpen()) {
+      filterCities(citySearch.value);
+      openList();
+      return;
+    }
+    moveActive(1);
+  } else if (event.key === "ArrowUp") {
+    event.preventDefault();
+    moveActive(-1);
+  } else if (event.key === "Enter") {
+    if (isListOpen() && activeIndex >= 0) {
+      event.preventDefault();
+      chooseCity(filteredCities[activeIndex] ?? "");
+    }
+  } else if (event.key === "Escape") {
+    closeList();
+  }
+});
+
+citySearch.addEventListener("blur", () => {
+  window.setTimeout(() => {
+    closeList();
+    syncSearchFromSelect();
+  }, 120);
+});
+
+cityOptions.addEventListener("mousedown", (event) => {
+  const target = event.target as HTMLElement | null;
+  const item = target?.closest("li[data-value]");
+  if (!item) {
+    return;
+  }
+
+  event.preventDefault();
+  chooseCity(item.getAttribute("data-value") || "");
+});
+
+document.addEventListener("click", (event) => {
+  if (!comboRoot.contains(event.target as Node)) {
+    closeList();
+  }
+});
 
 loadBtn.addEventListener("click", () => {
   void loadEvents();
@@ -108,6 +280,7 @@ window.addEventListener("popstate", () => {
   const match = [...citySelect.options].find((opt) => opt.value === cityFromUrl);
   if (match && citySelect.value !== cityFromUrl) {
     citySelect.value = cityFromUrl;
+    syncSearchFromSelect();
     void loadEvents();
   }
 });

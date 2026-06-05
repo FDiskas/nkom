@@ -17,7 +17,7 @@ function HomePage() {
       </head>
       <body className="font-display text-foreground min-h-screen">
         <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
-          <section className="hero-enter rounded-3xl border border-border/70 bg-card/90 p-6 shadow-lg shadow-orange-200/40 backdrop-blur sm:p-8">
+          <section className="hero-enter relative z-30 rounded-3xl border border-border/70 bg-card/90 p-6 shadow-lg shadow-orange-200/40 backdrop-blur sm:p-8">
             <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
               <div>
                 <p className="mb-3 inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
@@ -32,16 +32,51 @@ function HomePage() {
                 </p>
               </div>
               <div className="rounded-2xl border border-border bg-background/90 p-4">
-                <label htmlFor="citySelect" className="mb-2 block text-sm font-semibold">
+                <label htmlFor="citySearch" className="mb-2 block text-sm font-semibold">
                   Gyvenvietė
                 </label>
-                <select
-                  id="citySelect"
-                  className="h-11 w-full rounded-md border border-input bg-card px-3 text-sm outline-none transition focus:ring-2 focus:ring-ring"
-                  disabled
-                >
-                  <option>Kraunama...</option>
-                </select>
+                <div id="comboRoot" className="relative">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={2}
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    aria-hidden="true"
+                    className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
+                  >
+                    <circle cx="11" cy="11" r="7" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                  <input
+                    id="citySearch"
+                    type="text"
+                    role="combobox"
+                    autoComplete="off"
+                    aria-expanded="false"
+                    aria-controls="cityOptions"
+                    aria-autocomplete="list"
+                    placeholder="Kraunama..."
+                    className="h-11 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm outline-none transition focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-55"
+                    disabled
+                  />
+                  <ul
+                    id="cityOptions"
+                    role="listbox"
+                    className="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-md border border-border bg-card py-1 text-sm shadow-lg"
+                  ></ul>
+                  <select
+                    id="citySelect"
+                    className="sr-only"
+                    tabIndex={-1}
+                    aria-hidden="true"
+                    disabled
+                  >
+                    <option>Kraunama...</option>
+                  </select>
+                </div>
                 <button
                   id="loadBtn"
                   className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55"
