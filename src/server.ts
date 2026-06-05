@@ -5,7 +5,6 @@ import {
   getLatestXlsxFetchedAt,
   SOURCE_PAGE_URL,
 } from "./nkomService.ts";
-import { mkdir } from "node:fs/promises";
 import { renderHomePage } from "./uiPage.tsx";
 import { renderAboutPage } from "./aboutPage.tsx";
 
@@ -20,92 +19,84 @@ const UI_ASSET_MIME: Record<string, string> = {
 
 const UI_BUILD_ENTRYPOINTS = ["./src/ui/client/home-page.ts"];
 
+async function handleHealth(): Promise<Response> {
+  const cache = await getCacheDiagnostics();
+  return jsonResponse({
+    ok: true,
+    service: "nkom",
+    now: new Date().toISOString(),
+    uptimeSeconds: Math.round(process.uptime()),
+    bunVersion: Bun.version,
+    nodeCompatibilityVersion: process.version,
+    platform: process.platform,
+    pid: process.pid,
+    memory: {
+      usedMb: Number((process.memoryUsage().rss / (1024 * 1024)).toFixed(2)),
+    },
+    cache,
+  });
+}
+
+async function handleCities(): Promise<Response> {
+  const cities = await getAvailableCities();
+  return jsonResponse({
+    sourcePageUrl: SOURCE_PAGE_URL,
+    count: cities.length,
+    cities,
+  });
+}
+
+async function handleEvents(url: URL): Promise<Response> {
+  const keyword = url.searchParams.get("keyword")?.trim() || DEFAULT_KEYWORD;
+  const events = await generateCalendarEvents(keyword);
+  const lastUpdatedAt = await getLatestXlsxFetchedAt();
+  return jsonResponse({
+    keyword,
+    sourcePageUrl: SOURCE_PAGE_URL,
+    count: events.length,
+    lastUpdatedAt,
+    events,
+  });
+}
+
+const ROUTES: Record<string, (url: URL) => Response | Promise<Response>> = {
+  "/health": handleHealth,
+  "/": () => htmlResponse(renderHomePage()),
+  "/apie": () => htmlResponse(renderAboutPage()),
+  "/cities": handleCities,
+  "/events": handleEvents,
+};
+
+async function handleRequest(request: Request): Promise<Response> {
+  const url = new URL(request.url);
+
+  try {
+    if (url.pathname.startsWith("/assets/")) {
+      return await assetResponse(url.pathname);
+    }
+
+    const handler = ROUTES[url.pathname];
+    if (handler) {
+      return await handler(url);
+    }
+
+    return jsonResponse({ error: "Not found" }, 404);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return jsonResponse({ error: message }, 500);
+  }
+}
+
 export async function startServer(): Promise<void> {
   await buildUiAssets();
   const port = Number(process.env.PORT ?? 3000);
 
-  Bun.serve({
-    port,
-    fetch: async (request: Request) => {
-      const url = new URL(request.url);
-
-      if (url.pathname === "/health") {
-        const memory = process.memoryUsage();
-        const rssBytes = memory.rss;
-        const cache = await getCacheDiagnostics();
-        return jsonResponse({
-          ok: true,
-          service: "nkom",
-          now: new Date().toISOString(),
-          uptimeSeconds: Math.round(process.uptime()),
-          bunVersion: Bun.version,
-          nodeCompatibilityVersion: process.version,
-          platform: process.platform,
-          pid: process.pid,
-          memory: {
-            usedMb: Number((rssBytes / (1024 * 1024)).toFixed(2)),
-          },
-          cache,
-        });
-      }
-
-      if (url.pathname === "/") {
-        return htmlResponse(renderHomePage());
-      }
-
-      if (url.pathname === "/apie") {
-        return htmlResponse(renderAboutPage());
-      }
-
-      if (url.pathname.startsWith("/assets/")) {
-        return await assetResponse(url.pathname);
-      }
-
-      if (url.pathname === "/cities") {
-        try {
-          const cities = await getAvailableCities();
-          return jsonResponse({
-            sourcePageUrl: SOURCE_PAGE_URL,
-            count: cities.length,
-            cities,
-          });
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          return jsonResponse({ error: message }, 500);
-        }
-      }
-
-      if (url.pathname === "/events") {
-        const queryKeyword = url.searchParams.get("keyword")?.trim();
-        const keyword = queryKeyword || DEFAULT_KEYWORD;
-
-        try {
-          const events = await generateCalendarEvents(keyword);
-          const lastUpdatedAt = await getLatestXlsxFetchedAt();
-          return jsonResponse({
-            keyword,
-            sourcePageUrl: SOURCE_PAGE_URL,
-            count: events.length,
-            lastUpdatedAt,
-            events,
-          });
-        } catch (error) {
-          const message =
-            error instanceof Error ? error.message : String(error);
-          return jsonResponse({ error: message }, 500);
-        }
-      }
-
-      return jsonResponse({ error: "Not found" }, 404);
-    },
-  });
+  Bun.serve({ port, fetch: handleRequest });
 
   console.log(`NKOM service listening on http://localhost:${port}`);
 }
 
 async function buildUiAssets(): Promise<void> {
-  await mkdir(UI_ASSET_OUT_DIR, { recursive: true });
   await buildTailwindCss();
 
   const build = await Bun.build({

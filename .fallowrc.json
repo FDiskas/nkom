@@ -1,0 +1,5 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  "entry": ["src/ui/client/home-page.ts", "src/**/*.test.ts"],
+  "ignorePatterns": ["public/**", "src/ui/client/*.css"]
+}

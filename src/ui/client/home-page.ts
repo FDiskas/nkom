@@ -1,5 +1,8 @@
 /// <reference lib="dom" />
 
+import { normalizeLocality, toLocalityKey } from "../../shared/locality.ts";
+import { getEventTypeIcon } from "../../shared/waste.ts";
+
 type NkomEvent = {
   date?: string;
   type?: string;
@@ -123,18 +126,18 @@ function closeList(): void {
 }
 
 function filterCities(query: string): void {
-  const normalizedQuery = normalizeCityToken(query);
-  const keyedQuery = toCityMatchKey(query);
+  const normalizedQuery = normalizeLocality(query);
+  const keyedQuery = toLocalityKey(query);
 
   filteredCities = !normalizedQuery
     ? comboCities.slice()
     : comboCities.filter((city) => {
-        const normalizedCity = normalizeCityToken(city);
+        const normalizedCity = normalizeLocality(city);
         if (normalizedCity.includes(normalizedQuery)) {
           return true;
         }
         return keyedQuery
-          ? toCityMatchKey(city).includes(keyedQuery)
+          ? toLocalityKey(city).includes(keyedQuery)
           : false;
       });
 
@@ -277,7 +280,7 @@ window.addEventListener("popstate", () => {
     return;
   }
 
-  const match = [...citySelect.options].find((opt) => opt.value === cityFromUrl);
+  const match = Array.from(citySelect.options).find((opt) => opt.value === cityFromUrl);
   if (match && citySelect.value !== cityFromUrl) {
     citySelect.value = cityFromUrl;
     syncSearchFromSelect();
@@ -399,12 +402,12 @@ function applyCityFromUrl(cities: string[]): void {
     return;
   }
 
-  const normalizedFromUrl = normalizeCityToken(cityFromUrl);
-  const keyedFromUrl = toCityMatchKey(cityFromUrl);
+  const normalizedFromUrl = normalizeLocality(cityFromUrl);
+  const keyedFromUrl = toLocalityKey(cityFromUrl);
   const match =
     cities.find((city) => city === cityFromUrl) ||
-    cities.find((city) => normalizeCityToken(city) === normalizedFromUrl) ||
-    cities.find((city) => toCityMatchKey(city) === keyedFromUrl);
+    cities.find((city) => normalizeLocality(city) === normalizedFromUrl) ||
+    cities.find((city) => toLocalityKey(city) === keyedFromUrl);
 
   if (match) {
     citySelect.value = match;
@@ -431,85 +434,16 @@ function updateBookmarkLink(city: string, push = false): void {
   copyBookmarkBtn.disabled = !city;
 }
 
-function normalizeCityToken(value: string): string {
-  return String(value)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/["“”„']/g, "")
-    .replace(/\s+(?:vs\.?|k\.?|km\.?|mstl\.?|m\.)$/i, "")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function toCityMatchKey(value: string): string {
-  const normalized = normalizeCityToken(value);
-  if (!normalized) {
-    return "";
-  }
-
-  return normalized
-    .split(" ")
-    .filter(Boolean)
-    .map((word) => stemCityWord(word))
-    .join(" ")
-    .trim();
-}
-
-function stemCityWord(word: string): string {
-  const endings = [
-    "iai",
-    "iu",
-    "io",
-    "ui",
-    "ai",
-    "as",
-    "is",
-    "ys",
-    "es",
-    "os",
-    "us",
-    "e",
-    "a",
-    "i",
-    "u",
-  ];
-
-  for (const ending of endings) {
-    if (word.endsWith(ending) && word.length - ending.length >= 4) {
-      return word.slice(0, -ending.length);
-    }
-  }
-
-  return word;
-}
-
 async function copyTextToClipboard(value: string): Promise<boolean> {
-  if (
-    navigator.clipboard &&
-    typeof navigator.clipboard.writeText === "function"
-  ) {
-    try {
-      await navigator.clipboard.writeText(value);
-      return true;
-    } catch {
-      // Fallback handled below.
-    }
+  if (typeof navigator.clipboard?.writeText !== "function") {
+    return false;
   }
 
+  // writeText rejects when the document lacks clipboard permission; report that
+  // to the caller rather than letting the click handler reject unhandled.
   try {
-    const textArea = document.createElement("textarea");
-    textArea.value = value;
-    textArea.setAttribute("readonly", "true");
-    textArea.style.position = "fixed";
-    textArea.style.top = "-1000px";
-    document.body.appendChild(textArea);
-    textArea.focus();
-    textArea.select();
-    const success = document.execCommand("copy");
-    document.body.removeChild(textArea);
-    return success;
+    await navigator.clipboard.writeText(value);
+    return true;
   } catch {
     return false;
   }
@@ -586,27 +520,6 @@ function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
     .join("");
 
   root.innerHTML = rows;
-}
-
-function getEventTypeIcon(type: string): string {
-  const normalized = String(type)
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  if (normalized.includes("misri")) {
-    return "🗑️";
-  }
-
-  if (normalized.includes("pakuot")) {
-    return "♻️";
-  }
-
-  if (normalized.includes("stikl")) {
-    return "🍾";
-  }
-
-  return "📅";
 }
 
 function splitEventsByDate(events: NkomEvent[]): {

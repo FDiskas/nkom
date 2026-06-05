@@ -1,23 +1,12 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { Layout } from "./layout";
 import { SOURCE_PAGE_URL } from "./nkomService";
 import { SiteFooter } from "./siteFooter";
 
 function AboutPage() {
   return (
-    <html lang="lt">
-      <head>
-        <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>Apie projektą | NKOM Atliekų išvežimo grafikas</title>
-        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
-        />
-        <link rel="stylesheet" href="/assets/home-page.css" />
-      </head>
-      <body className="font-display text-foreground min-h-screen">
-        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <Layout title="Apie projektą | NKOM Atliekų išvežimo grafikas">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
           <section className="hero-enter rounded-3xl border border-border/70 bg-card/90 p-6 shadow-lg shadow-orange-200/40 backdrop-blur sm:p-8">
             <p className="mb-3 inline-flex items-center rounded-full bg-secondary px-3 py-1 text-xs font-semibold uppercase tracking-[0.16em] text-secondary-foreground">
               Apie projektą
@@ -133,8 +122,7 @@ function AboutPage() {
 
           <SiteFooter />
         </main>
-      </body>
-    </html>
+    </Layout>
   );
 }
 

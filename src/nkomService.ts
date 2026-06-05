@@ -1,7 +1,13 @@
 import * as XLSX from "xlsx";
-import { promises as fs } from "node:fs";
-import path from "node:path";
-import crypto from "node:crypto";
+import {
+  cleanCityDisplayName,
+  extractLocalityKeys,
+  normalizeText,
+  splitCityParts,
+  stripParenthesizedText,
+  toLocalityKey,
+} from "./shared/locality.ts";
+import { getEventTypeIcon } from "./shared/waste.ts";
 
 type CellValue = string | number | null | undefined;
 type FileEntry = { url: string; type: string };
@@ -9,6 +15,11 @@ type FileEntry = { url: string; type: string };
 type CacheMeta = {
   fetchedAt: number;
   binary: boolean;
+};
+
+type CachePaths = {
+  dataPath: string;
+  metaPath: string;
 };
 
 type MonthColumn = {
@@ -37,7 +48,7 @@ export const SOURCE_PAGE_URL = "https://www.nkom.lt/kita.html";
 
 const DEFAULT_YEAR = 2026;
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
-const CACHE_DIR = path.join(process.cwd(), ".cache", "nkom");
+const CACHE_DIR = `${process.cwd()}/.cache/nkom`;
 
 export async function generateCalendarEvents(
   keyword: string,
@@ -82,21 +93,24 @@ export async function generateCalendarEvents(
   return dedupeEvents(events);
 }
 
+async function readCacheFetchedAt(metaPath: string): Promise<number | null> {
+  try {
+    const meta = JSON.parse(await Bun.file(metaPath).text()) as CacheMeta;
+    return typeof meta.fetchedAt === "number" ? meta.fetchedAt : null;
+  } catch {
+    // Missing or malformed metadata contributes no timestamp.
+    return null;
+  }
+}
+
 export async function getLatestXlsxFetchedAt(): Promise<string | null> {
   const files = await getXlsxFilesFromPage(SOURCE_PAGE_URL);
   const fetchedAtValues: number[] = [];
 
   for (const file of files) {
-    const cachePaths = getCachePaths(file.url);
-
-    try {
-      const metaRaw = await fs.readFile(cachePaths.metaPath, "utf8");
-      const meta = JSON.parse(metaRaw) as CacheMeta;
-      if (typeof meta.fetchedAt === "number") {
-        fetchedAtValues.push(meta.fetchedAt);
-      }
-    } catch {
-      // Skip missing or malformed metadata and continue.
+    const fetchedAt = await readCacheFetchedAt(getCachePaths(file.url).metaPath);
+    if (fetchedAt !== null) {
+      fetchedAtValues.push(fetchedAt);
     }
   }
 
@@ -136,17 +150,11 @@ export async function getAvailableCities(): Promise<string[]> {
 }
 
 export async function getCacheDiagnostics(): Promise<CacheDiagnostics> {
-  let entries: Array<{ name: string; size: number }> = [];
+  const entries: Array<{ name: string; size: number }> = [];
   try {
-    const dirEntries = await fs.readdir(CACHE_DIR, { withFileTypes: true });
-    for (const entry of dirEntries) {
-      if (!entry.isFile()) {
-        continue;
-      }
-
-      const fullPath = path.join(CACHE_DIR, entry.name);
-      const stat = await fs.stat(fullPath);
-      entries.push({ name: entry.name, size: stat.size });
+    const glob = new Bun.Glob("*");
+    for await (const name of glob.scan({ cwd: CACHE_DIR, onlyFiles: true })) {
+      entries.push({ name, size: Bun.file(`${CACHE_DIR}/${name}`).size });
     }
   } catch {
     return {
@@ -164,17 +172,9 @@ export async function getCacheDiagnostics(): Promise<CacheDiagnostics> {
   const fetchedAtValues: number[] = [];
 
   for (const metaFile of metaFiles) {
-    try {
-      const raw = await fs.readFile(
-        path.join(CACHE_DIR, metaFile.name),
-        "utf8",
-      );
-      const meta = JSON.parse(raw) as CacheMeta;
-      if (typeof meta.fetchedAt === "number") {
-        fetchedAtValues.push(meta.fetchedAt);
-      }
-    } catch {
-      // Ignore malformed metadata files and continue diagnostics.
+    const fetchedAt = await readCacheFetchedAt(`${CACHE_DIR}/${metaFile.name}`);
+    if (fetchedAt !== null) {
+      fetchedAtValues.push(fetchedAt);
     }
   }
 
@@ -240,12 +240,57 @@ function rowIncludesKeyword(
   });
 }
 
-function extractCityCandidates(row: CellValue[]): string[] {
-  const preferredCell =
-    (typeof row[1] === "string" && row[1].trim() ? row[1] : undefined) ??
-    row.find(
-      (cell): cell is string => typeof cell === "string" && !!cell.trim(),
-    );
+// Substrings that mark a cell as a column header / waste-type label rather than
+// a locality, so such cells are excluded from the city list.
+const CITY_NAME_BLACKLIST = [
+  "atliek",
+  "grafik",
+  "seniun",
+  "stikl",
+  "pakuot",
+  "plast",
+  "kalend",
+  "menuo",
+  "marsrut",
+  "uab",
+  "komunalinink",
+];
+
+// Lithuanian locality names start with an uppercase letter (incl. diacritics).
+const CITY_NAME_INITIAL = /^[A-Z\u0104\u010C\u0118\u0116\u012E\u0160\u0172\u016A\u017D]/;
+
+function isPlausibleCityName(cleaned: string): boolean {
+  const normalized = normalizeText(cleaned);
+  if (normalized.length < 3 || normalized.length > 40) {
+    return false;
+  }
+
+  if (CITY_NAME_BLACKLIST.some((token) => normalized.includes(token))) {
+    return false;
+  }
+
+  if (!CITY_NAME_INITIAL.test(cleaned)) {
+    return false;
+  }
+
+  return cleaned.split(/\s+/).filter(Boolean).length <= 3;
+}
+
+function pickCityCell(row: CellValue[]): string | undefined {
+  // The second column usually holds the locality; otherwise fall back to the
+  // first non-empty text cell in the row.
+  const second = row[1];
+  if (typeof second === "string" && second.trim()) {
+    return second;
+  }
+
+  return row.find(
+    (cell): cell is string => typeof cell === "string" && Boolean(cell.trim()),
+  );
+}
+
+export function extractCityCandidates(row: CellValue[]): string[] {
+  const preferredCell = pickCityCell(row);
   if (!preferredCell) {
     return [];
   }
@@ -257,150 +302,15 @@ function extractCityCandidates(row: CellValue[]): string[] {
     return [];
   }
 
-  const blacklist = [
-    "atliek",
-    "grafik",
-    "seniun",
-    "stikl",
-    "pakuot",
-    "plast",
-    "kalend",
-    "menuo",
-    "marsrut",
-    "uab",
-    "komunalinink",
-  ];
-
-  const parts = splitCityParts(sanitized);
-
   const candidates = new Set<string>();
-  for (const part of parts) {
+  for (const part of splitCityParts(sanitized)) {
     const cleaned = cleanCityDisplayName(part);
-    if (!cleaned) {
-      continue;
+    if (cleaned && isPlausibleCityName(cleaned)) {
+      candidates.add(cleaned);
     }
-
-    const normalized = normalizeText(cleaned);
-    if (normalized.length < 3 || normalized.length > 40) {
-      continue;
-    }
-
-    if (blacklist.some((token) => normalized.includes(token))) {
-      continue;
-    }
-
-    if (
-      !/^[A-Z\u0104\u010C\u0118\u0116\u012E\u0160\u0172\u016A\u017D]/.test(
-        cleaned,
-      )
-    ) {
-      continue;
-    }
-
-    const wordCount = cleaned.split(/\s+/).filter(Boolean).length;
-    if (wordCount > 3) {
-      continue;
-    }
-
-    candidates.add(cleaned);
   }
 
   return [...candidates];
-}
-
-function stripParenthesizedText(value: string): string {
-  let result = value;
-  // Repeated replace handles nested parentheses in malformed source text.
-  while (/\([^()]*\)/.test(result)) {
-    result = result.replace(/\([^()]*\)/g, " ");
-  }
-
-  return result;
-}
-
-function splitCityParts(value: string): string[] {
-  return value
-    .split(/[;,/]/g)
-    .map((part) => part.trim())
-    .filter(Boolean);
-}
-
-function cleanCityDisplayName(value: string): string {
-  return value
-    .replace(/\s+/g, " ")
-    .replace(/[\s,.]+$/g, "")
-    .replace(/\s+(?:vs\.?|k\.?|km\.?|mstl\.?|m\.)$/i, "")
-    .trim();
-}
-
-function extractLocalityKeys(value: string): Set<string> {
-  const source = stripParenthesizedText(value);
-  const parts = splitCityParts(source);
-  const keys = new Set<string>();
-
-  for (const part of parts) {
-    const cleaned = cleanCityDisplayName(part);
-    if (!cleaned) {
-      continue;
-    }
-
-    const key = toLocalityKey(cleaned);
-    if (key) {
-      keys.add(key);
-    }
-  }
-
-  return keys;
-}
-
-function toLocalityKey(value: string): string {
-  const normalized = normalizeText(value)
-    .replace(/["“”„']/g, "")
-    .replace(/\b(?:vs|k|km|mstl|m)\b/g, " ")
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-
-  if (!normalized) {
-    return "";
-  }
-
-  const words = normalized
-    .split(" ")
-    .filter(Boolean)
-    .map((word) => stemLocalityWord(word));
-
-  return words.join(" ").trim();
-}
-
-function stemLocalityWord(word: string): string {
-  const endings = [
-    "iai",
-    "iu",
-    "ių",
-    "io",
-    "ui",
-    "ai",
-    "as",
-    "is",
-    "ys",
-    "es",
-    "os",
-    "us",
-    "e",
-    "a",
-    "i",
-    "u",
-    "ų",
-  ];
-
-  for (const ending of endings) {
-    if (word.endsWith(ending) && word.length - ending.length >= 4) {
-      return word.slice(0, -ending.length);
-    }
-  }
-
-  return word;
 }
 
 function hasScheduleDays(row: CellValue[]): boolean {
@@ -438,7 +348,7 @@ async function getXlsxFilesFromPage(pageUrl: string): Promise<FileEntry[]> {
   return files;
 }
 
-function dedupeEvents(events: CalendarEvent[]): CalendarEvent[] {
+export function dedupeEvents(events: CalendarEvent[]): CalendarEvent[] {
   const unique = new Map<string, CalendarEvent>();
   for (const event of events) {
     const key = `${event.type}|${event.date}|${event.sourceFileUrl}`;
@@ -484,24 +394,22 @@ async function fetchBinaryWithCache(url: string): Promise<Uint8Array> {
   return bytes;
 }
 
-function getCachePaths(url: string): { dataPath: string; metaPath: string } {
-  const key = crypto.createHash("sha256").update(url).digest("hex");
+function getCachePaths(url: string): CachePaths {
+  const key = new Bun.CryptoHasher("sha256").update(url).digest("hex");
   return {
-    dataPath: path.join(CACHE_DIR, `${key}.data`),
-    metaPath: path.join(CACHE_DIR, `${key}.meta.json`),
+    dataPath: `${CACHE_DIR}/${key}.data`,
+    metaPath: `${CACHE_DIR}/${key}.meta.json`,
   };
 }
 
 async function readFromCache(
-  cachePaths: { dataPath: string; metaPath: string },
+  cachePaths: CachePaths,
   binary: boolean,
 ): Promise<string | Uint8Array | null> {
   try {
-    const metaRaw = await fs.readFile(cachePaths.metaPath, "utf8");
-    const meta = JSON.parse(metaRaw) as {
-      fetchedAt: number;
-      binary: boolean;
-    };
+    const meta = JSON.parse(
+      await Bun.file(cachePaths.metaPath).text(),
+    ) as CacheMeta;
 
     if (meta.binary !== binary) {
       return null;
@@ -511,24 +419,23 @@ async function readFromCache(
       return null;
     }
 
-    const data = await fs.readFile(cachePaths.dataPath);
-    return binary ? new Uint8Array(data) : data.toString("utf8");
+    const data = Bun.file(cachePaths.dataPath);
+    return binary ? new Uint8Array(await data.arrayBuffer()) : await data.text();
   } catch {
     return null;
   }
 }
 
+// Bun.write creates parent directories as needed, so no explicit mkdir.
 async function writeToCache(
-  cachePaths: { dataPath: string; metaPath: string },
+  cachePaths: CachePaths,
   value: string | Uint8Array,
   binary: boolean,
 ): Promise<void> {
-  await fs.mkdir(CACHE_DIR, { recursive: true });
-  await fs.writeFile(cachePaths.dataPath, value);
-  await fs.writeFile(
+  await Bun.write(cachePaths.dataPath, value);
+  await Bun.write(
     cachePaths.metaPath,
     JSON.stringify({ fetchedAt: Date.now(), binary }),
-    "utf8",
   );
 }
 
@@ -539,7 +446,7 @@ function stripHtml(value: string): string {
     .replace(/\s+/g, " ");
 }
 
-function inferWasteType(label: string, url: string): string {
+export function inferWasteType(label: string, url: string): string {
   const source = `${label} ${url}`.toLowerCase();
 
   if (source.includes("buit")) {
@@ -553,7 +460,7 @@ function inferWasteType(label: string, url: string): string {
   return label || url.split("/").pop() || "Nežinomas tipas";
 }
 
-function extractScheduleYear(data: CellValue[][]): number | null {
+export function extractScheduleYear(data: CellValue[][]): number | null {
   for (const row of data) {
     for (const cell of row) {
       if (typeof cell !== "string") {
@@ -570,7 +477,7 @@ function extractScheduleYear(data: CellValue[][]): number | null {
   return null;
 }
 
-function extractMonthColumns(data: CellValue[][]): MonthColumn[] {
+export function extractMonthColumns(data: CellValue[][]): MonthColumn[] {
   let bestRowMonths = new Map<number, number>();
   let bestRowIndex = -1;
 
@@ -640,60 +547,37 @@ function inferEventTypeFromSectionRow(
   return null;
 }
 
-function getMonthNumber(value: CellValue): number | null {
+const MONTH_TOKENS: ReadonlyArray<readonly [string, number]> = [
+  ["saus", 1],
+  ["vasar", 2],
+  ["kov", 3],
+  ["baland", 4],
+  ["geguz", 5],
+  ["birzel", 6],
+  ["liep", 7],
+  ["rugpj", 8],
+  ["rugsej", 9],
+  ["spal", 10],
+  ["lapkr", 11],
+  ["gruod", 12],
+];
+
+export function getMonthNumber(value: CellValue): number | null {
   if (typeof value !== "string") {
     return null;
   }
 
   const normalized = normalizeText(value);
-  if (normalized.includes("saus")) {
-    return 1;
-  }
-  if (normalized.includes("vasar")) {
-    return 2;
-  }
-  if (normalized.includes("kov")) {
-    return 3;
-  }
-  if (normalized.includes("baland")) {
-    return 4;
-  }
-  if (normalized.includes("geguz")) {
-    return 5;
-  }
-  if (normalized.includes("birzel")) {
-    return 6;
-  }
-  if (normalized.includes("liep")) {
-    return 7;
-  }
-  if (normalized.includes("rugpj")) {
-    return 8;
-  }
-  if (normalized.includes("rugsej")) {
-    return 9;
-  }
-  if (normalized.includes("spal")) {
-    return 10;
-  }
-  if (normalized.includes("lapkr")) {
-    return 11;
-  }
-  if (normalized.includes("gruod")) {
-    return 12;
+  for (const [token, month] of MONTH_TOKENS) {
+    if (normalized.includes(token)) {
+      return month;
+    }
   }
 
   return null;
 }
 
-function normalizeText(value: string): string {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-}
-
-function extractDatesFromRow(
+export function extractDatesFromRow(
   row: CellValue[],
   monthColumns: MonthColumn[],
   year: number,
@@ -715,25 +599,20 @@ function extractDatesFromRow(
   return [...dates.values()].sort((a, b) => a.date.localeCompare(b.date));
 }
 
-function parseDays(value: CellValue): number[] {
-  if (typeof value === "number") {
-    if (!Number.isInteger(value) || value < 1 || value > 31) {
-      return [];
-    }
+function isValidDay(day: number): boolean {
+  return Number.isInteger(day) && day >= 1 && day <= 31;
+}
 
-    return [value];
+export function parseDays(value: CellValue): number[] {
+  if (typeof value === "number") {
+    return isValidDay(value) ? [value] : [];
   }
 
   if (typeof value !== "string") {
     return [];
   }
 
-  const trimmed = value.trim();
-  if (!trimmed) {
-    return [];
-  }
-
-  const matches = trimmed.match(/(?<!\d)\d{1,2}(?!\d)/g);
+  const matches = value.match(/(?<!\d)\d{1,2}(?!\d)/g);
   if (!matches) {
     return [];
   }
@@ -741,7 +620,7 @@ function parseDays(value: CellValue): number[] {
   const days = new Set<number>();
   for (const token of matches) {
     const day = Number(token);
-    if (Number.isInteger(day) && day >= 1 && day <= 31) {
+    if (isValidDay(day)) {
       days.add(day);
     }
   }
@@ -749,7 +628,7 @@ function parseDays(value: CellValue): number[] {
   return [...days].sort((a, b) => a - b);
 }
 
-function buildIsoDate(year: number, month: number, day: number): string | null {
+export function buildIsoDate(year: number, month: number, day: number): string | null {
   const date = new Date(Date.UTC(year, month - 1, day));
   if (
     date.getUTCFullYear() !== year ||
@@ -766,25 +645,7 @@ function formatDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-function getEventTypeIcon(type: string): string {
-  const normalized = normalizeText(type);
-
-  if (normalized.includes("misri")) {
-    return "🗑️";
-  }
-
-  if (normalized.includes("pakuot")) {
-    return "♻️";
-  }
-
-  if (normalized.includes("stikl")) {
-    return "🍾";
-  }
-
-  return "📅";
-}
-
-function createGoogleCalendarLink(
+export function createGoogleCalendarLink(
   type: string,
   date: string,
   keyword: string,

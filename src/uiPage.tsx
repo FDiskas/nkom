@@ -1,22 +1,11 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { Layout } from "./layout";
 import { SiteFooter } from "./siteFooter";
 
 function HomePage() {
   return (
-    <html lang="lt">
-      <head>
-        <meta charSet="UTF-8" />
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <title>NKOM Atliekų išvežimo grafikas</title>
-        <link rel="icon" type="image/svg+xml" href="/assets/favicon.svg" />
-        <link
-          rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
-        />
-        <link rel="stylesheet" href="/assets/home-page.css" />
-      </head>
-      <body className="font-display text-foreground min-h-screen">
-        <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
+    <Layout title="NKOM Atliekų išvežimo grafikas">
+      <main className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
           <section className="hero-enter relative z-30 rounded-3xl border border-border/70 bg-card/90 p-6 shadow-lg shadow-orange-200/40 backdrop-blur sm:p-8">
             <div className="grid gap-6 lg:grid-cols-[1.4fr_1fr]">
               <div>
@@ -159,8 +148,7 @@ function HomePage() {
           <SiteFooter />
         </main>
         <script src="/assets/home-page.js" defer></script>
-      </body>
-    </html>
+    </Layout>
   );
 }
 
