@@ -136,9 +136,7 @@ function filterCities(query: string): void {
         if (normalizedCity.includes(normalizedQuery)) {
           return true;
         }
-        return keyedQuery
-          ? toLocalityKey(city).includes(keyedQuery)
-          : false;
+        return keyedQuery ? toLocalityKey(city).includes(keyedQuery) : false;
       });
 
   activeIndex = filteredCities.length ? 0 : -1;
@@ -210,6 +208,7 @@ function chooseCity(city: string): void {
 }
 
 citySearch.addEventListener("focus", () => {
+  citySearch.select();
   filterCities("");
   openList();
 });
@@ -280,7 +279,9 @@ window.addEventListener("popstate", () => {
     return;
   }
 
-  const match = Array.from(citySelect.options).find((opt) => opt.value === cityFromUrl);
+  const match = Array.from(citySelect.options).find(
+    (opt) => opt.value === cityFromUrl,
+  );
   if (match && citySelect.value !== cityFromUrl) {
     citySelect.value = cityFromUrl;
     syncSearchFromSelect();
@@ -459,10 +460,15 @@ function renderSourceFiles(urls: string[]): void {
   sourceList.innerHTML = urls
     .map((url, index) => {
       const safeUrl = escapeHtml(url);
+      const format = url.toLowerCase().split("?")[0]?.endsWith(".pdf")
+        ? "PDF"
+        : "XLSX";
       return (
         '<a class="block text-xs text-muted-foreground underline decoration-dotted underline-offset-4" href="' +
         safeUrl +
-        '" target="_blank" rel="noreferrer">XLSX šaltinis ' +
+        '" target="_blank" rel="noreferrer">' +
+        format +
+        " šaltinis " +
         String(index + 1) +
         "</a>"
       );

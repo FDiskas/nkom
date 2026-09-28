@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { readPdfScheduleRows } from "./pdfSchedule.ts";
 import {
   cleanCityDisplayName,
   extractLocalityKeys,
@@ -10,7 +11,8 @@ import {
 import { getEventTypeIcon } from "./shared/waste.ts";
 
 type CellValue = string | number | null | undefined;
-type FileEntry = { url: string; type: string };
+type ScheduleFormat = "xlsx" | "pdf";
+type FileEntry = { url: string; type: string; format: ScheduleFormat };
 
 type CacheMeta = {
   fetchedAt: number;
@@ -53,13 +55,13 @@ const CACHE_DIR = `${process.cwd()}/.cache/nkom`;
 export async function generateCalendarEvents(
   keyword: string,
 ): Promise<CalendarEvent[]> {
-  const files = await getXlsxFilesFromPage(SOURCE_PAGE_URL);
+  const files = await getScheduleFilesFromPage(SOURCE_PAGE_URL);
   const normalizedKeyword = normalizeText(keyword);
   const keywordKeys = extractLocalityKeys(keyword);
 
   const events: CalendarEvent[] = [];
   for (const file of files) {
-    const data = await readFirstSheetRows(file.url);
+    const data = await readScheduleRows(file);
     if (!data.length) {
       continue;
     }
@@ -103,8 +105,8 @@ async function readCacheFetchedAt(metaPath: string): Promise<number | null> {
   }
 }
 
-export async function getLatestXlsxFetchedAt(): Promise<string | null> {
-  const files = await getXlsxFilesFromPage(SOURCE_PAGE_URL);
+export async function getLatestScheduleFetchedAt(): Promise<string | null> {
+  const files = await getScheduleFilesFromPage(SOURCE_PAGE_URL);
   const fetchedAtValues: number[] = [];
 
   for (const file of files) {
@@ -122,11 +124,11 @@ export async function getLatestXlsxFetchedAt(): Promise<string | null> {
 }
 
 export async function getAvailableCities(): Promise<string[]> {
-  const files = await getXlsxFilesFromPage(SOURCE_PAGE_URL);
+  const files = await getScheduleFilesFromPage(SOURCE_PAGE_URL);
   const unique = new Map<string, string>();
 
   for (const file of files) {
-    const data = await readFirstSheetRows(file.url);
+    const data = await readScheduleRows(file);
     if (!data.length) {
       continue;
     }
@@ -193,17 +195,50 @@ export async function getCacheDiagnostics(): Promise<CacheDiagnostics> {
   };
 }
 
-async function readFirstSheetRows(fileUrl: string): Promise<CellValue[][]> {
-  const workbookBytes = await fetchBinaryWithCache(fileUrl);
-  const workbook = XLSX.read(workbookBytes, { type: "array" });
+async function readScheduleRows(file: FileEntry): Promise<CellValue[][]> {
+  const bytes = await fetchBinaryWithCache(file.url);
+
+  if (file.format === "pdf") {
+    return dropSharedContainerSection(await readPdfScheduleRows(bytes));
+  }
+
+  const workbook = XLSX.read(bytes, { type: "array" });
   const [sheet] = Object.values(workbook?.Sheets ?? {});
   if (!sheet) {
     return [];
   }
 
-  return XLSX.utils.sheet_to_json(sheet, {
-    header: 1,
-  }) as CellValue[][];
+  return dropSharedContainerSection(
+    XLSX.utils.sheet_to_json(sheet, {
+      header: 1,
+    }) as CellValue[][],
+  );
+}
+
+// nkom.lt's source spreadsheet has a trailing tab for shared apartment-block
+// container-yard pickups ("... atliekų surinkimas iš (daugiabučių namų)
+// bendro naudojimo konteinerių aikštelių") — a different, weekday+week-parity
+// schedule (e.g. "Pirmadienis"/"KP1"), not tied to specific calendar dates,
+// and irrelevant to this app's per-locality date lookup. XLSX.utils reads
+// only the workbook's first sheet, so it never surfaced there, but the PDF
+// export concatenates every tab as extra pages, leaking this section (and,
+// per a real Q4 2026 PDF, its title landing merged onto the last real data
+// row) into the parsed rows. All three tokens are required — "bendro
+// naudojimo" alone also appears as an ordinary address suffix ("... bendro
+// naudojimo ir įmonės") on genuine schedule rows.
+export function dropSharedContainerSection(data: CellValue[][]): CellValue[][] {
+  const markerIndex = data.findIndex((row) => {
+    const joined = normalizeText(
+      row.filter((cell) => typeof cell === "string").join(" "),
+    );
+    return (
+      joined.includes("surinkimas") &&
+      joined.includes("bendro naudojimo") &&
+      joined.includes("aikstel")
+    );
+  });
+
+  return markerIndex === -1 ? data : data.slice(0, markerIndex);
 }
 
 function rowIncludesKeyword(
@@ -317,17 +352,17 @@ function hasScheduleDays(row: CellValue[]): boolean {
   return row.some((cell) => parseDays(cell).length > 0);
 }
 
-async function getXlsxFilesFromPage(pageUrl: string): Promise<FileEntry[]> {
+async function getScheduleFilesFromPage(pageUrl: string): Promise<FileEntry[]> {
   const html = await fetchTextWithCache(pageUrl);
   const anchorRegex =
-    /<a\b[^>]*href\s*=\s*["']([^"']+\.xlsx(?:\?[^"']*)?)["'][^>]*>([\s\S]*?)<\/a>/gi;
+    /<a\b[^>]*href\s*=\s*["']([^"']+\.(?:xlsx|pdf))(\?[^"']*)?["'][^>]*>([\s\S]*?)<\/a>/gi;
 
   const files: FileEntry[] = [];
   const seenUrls = new Set<string>();
 
   for (const match of html.matchAll(anchorRegex)) {
     const href = match[1];
-    const rawText = match[2];
+    const rawText = match[3];
     if (!href) {
       continue;
     }
@@ -339,13 +374,59 @@ async function getXlsxFilesFromPage(pageUrl: string): Promise<FileEntry[]> {
 
     seenUrls.add(absoluteUrl);
     const label = rawText ? stripHtml(rawText).trim() : "";
+    const format: ScheduleFormat = absoluteUrl.toLowerCase().endsWith(".pdf") ? "pdf" : "xlsx";
     files.push({
       url: absoluteUrl,
       type: inferWasteType(label, absoluteUrl),
+      format,
     });
   }
 
-  return files;
+  return preferXlsxOverPdf(files);
+}
+
+// The site sometimes publishes the same quarter's schedule in both formats
+// (an "XLSX formatu" / "PDF formatu" link pair pointing at different files),
+// and PDF should only be used as a fallback when no XLSX exists for that
+// same waste type + quarter. Files are grouped by that key and, within each
+// group, XLSX entries win whenever any exist.
+function preferXlsxOverPdf(files: FileEntry[]): FileEntry[] {
+  const order: string[] = [];
+  const groups = new Map<string, FileEntry[]>();
+
+  for (const file of files) {
+    const key = scheduleGroupKey(file);
+    if (!groups.has(key)) {
+      order.push(key);
+      groups.set(key, []);
+    }
+    groups.get(key)?.push(file);
+  }
+
+  const result: FileEntry[] = [];
+  for (const key of order) {
+    const group = groups.get(key) ?? [];
+    const xlsxEntries = group.filter((file) => file.format === "xlsx");
+    result.push(...(xlsxEntries.length ? xlsxEntries : group));
+  }
+  return result;
+}
+
+function scheduleGroupKey(file: FileEntry): string {
+  const decodedUrl = decodeUrlSafely(file.url);
+  const quarterMatch = decodedUrl.match(/\((\d{1,2}\s*-\s*\d{1,2})\)/);
+  const discriminator = quarterMatch?.[1]
+    ? quarterMatch[1].replace(/\s+/g, "")
+    : decodedUrl.replace(/\.(?:xlsx|pdf)(?:\?.*)?$/i, "");
+  return `${file.type}|${discriminator}`;
+}
+
+function decodeUrlSafely(url: string): string {
+  try {
+    return decodeURIComponent(url);
+  } catch {
+    return url;
+  }
 }
 
 export function dedupeEvents(events: CalendarEvent[]): CalendarEvent[] {
@@ -447,9 +528,15 @@ function stripHtml(value: string): string {
 }
 
 export function inferWasteType(label: string, url: string): string {
-  const source = `${label} ${url}`.toLowerCase();
+  // Diacritic-insensitive: newer links are often labeled generically ("PDF
+  // formatu") with no descriptive text, so the waste type has to be read off
+  // the filename instead (e.g. "Grafikas mišrių ... .pdf"), which keeps its
+  // proper Lithuanian diacritics unlike the older ASCII-transliterated names.
+  // The URL is percent-encoded, so it has to be decoded before diacritics
+  // (themselves multi-byte, percent-encoded sequences) can be stripped.
+  const source = normalizeText(`${label} ${decodeUrlSafely(url)}`);
 
-  if (source.includes("buit")) {
+  if (source.includes("buit") || source.includes("misr")) {
     return "Mišrios atliekos";
   }
 
@@ -501,16 +588,88 @@ export function extractMonthColumns(data: CellValue[][]): MonthColumn[] {
     return [];
   }
 
+  const headerRow = data[bestRowIndex] ?? [];
   const sectionRow = bestRowIndex > 0 ? data[bestRowIndex - 1] : undefined;
-  return [...bestRowMonths.entries()]
-    .sort((a, b) => a[0] - b[0])
-    .map(([columnIndex, month]) => ({
-      columnIndex,
-      month,
-      eventType: sectionRow
-        ? inferEventTypeFromSectionRow(sectionRow, columnIndex)
-        : null,
-    }));
+
+  const entries = [...bestRowMonths.entries()].sort((a, b) => a[0] - b[0]);
+  // The PDF export (unlike XLSX) has no separate section row above the
+  // header: a waste-type label like "Plastiko, popieriaus ir metalinės
+  // pakuotės" is drawn as its own merged cell spanning a group of month
+  // columns, and lands — via the column's start-x — inside whichever month
+  // cell it happens to overlap (observed: the group's middle month), so it
+  // ends up concatenated onto that one header cell's own text rather than
+  // sitting in a row of its own. So a column's own header cell is checked
+  // first; only once no column in its repeating-month group carries a label
+  // does the row above the header get consulted (the older XLSX-style
+  // layout, where the label truly is a separate row).
+  const ownTypes = entries.map(([columnIndex]) =>
+    classifyWasteTypeLabel(headerRow[columnIndex]),
+  );
+  fillRepeatingMonthGroups(
+    ownTypes,
+    entries.map(([, month]) => month),
+  );
+
+  return entries.map(([columnIndex, month], i) => ({
+    columnIndex,
+    month,
+    eventType:
+      ownTypes[i] ??
+      (sectionRow ? inferEventTypeFromSectionRow(sectionRow, columnIndex) : null),
+  }));
+}
+
+// A header row can bundle several waste-type sections that each repeat the
+// same month sequence (e.g. Spalis/Lapkritis/Gruodis once for "Plastiko,
+// popieriaus ir metalinės pakuotės" and again for "Stiklo pakuotės"). A new
+// section starts wherever the month sequence stops increasing; within a
+// section, any column's own label is propagated to its label-less siblings.
+function fillRepeatingMonthGroups(
+  types: Array<string | null>,
+  months: number[],
+): void {
+  let groupStart = 0;
+  for (let i = 1; i <= months.length; i++) {
+    const isBoundary =
+      i === months.length || (months[i] ?? 0) <= (months[i - 1] ?? 0);
+    if (!isBoundary) {
+      continue;
+    }
+
+    const label = types.slice(groupStart, i).find((type) => type !== null);
+    if (label) {
+      for (let j = groupStart; j < i; j++) {
+        types[j] ??= label;
+      }
+    }
+    groupStart = i;
+  }
+}
+
+function classifyWasteTypeLabel(value: CellValue): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = normalizeText(value).trim();
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.includes("stikl")) {
+    return "Stiklas";
+  }
+
+  if (
+    normalized.includes("pakuot") ||
+    normalized.includes("plast") ||
+    normalized.includes("popier") ||
+    normalized.includes("metal")
+  ) {
+    return "Pakuotės";
+  }
+
+  return null;
 }
 
 function inferEventTypeFromSectionRow(
@@ -519,29 +678,11 @@ function inferEventTypeFromSectionRow(
 ): string | null {
   for (let cursor = columnIndex; cursor >= 0; cursor -= 1) {
     const value = sectionRow[cursor];
-    if (typeof value !== "string") {
+    if (typeof value !== "string" || !value.trim()) {
       continue;
     }
 
-    const normalized = normalizeText(value).trim();
-    if (!normalized) {
-      continue;
-    }
-
-    if (normalized.includes("stikl")) {
-      return "Stiklas";
-    }
-
-    if (
-      normalized.includes("pakuot") ||
-      normalized.includes("plast") ||
-      normalized.includes("popier") ||
-      normalized.includes("metal")
-    ) {
-      return "Pakuotės";
-    }
-
-    return null;
+    return classifyWasteTypeLabel(value);
   }
 
   return null;

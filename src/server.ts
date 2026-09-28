@@ -2,7 +2,7 @@ import {
   generateCalendarEvents,
   getCacheDiagnostics,
   getAvailableCities,
-  getLatestXlsxFetchedAt,
+  getLatestScheduleFetchedAt,
   SOURCE_PAGE_URL,
 } from "./nkomService.ts";
 import { renderHomePage } from "./uiPage.tsx";
@@ -49,7 +49,7 @@ async function handleCities(): Promise<Response> {
 async function handleEvents(url: URL): Promise<Response> {
   const keyword = url.searchParams.get("keyword")?.trim() || DEFAULT_KEYWORD;
   const events = await generateCalendarEvents(keyword);
-  const lastUpdatedAt = await getLatestXlsxFetchedAt();
+  const lastUpdatedAt = await getLatestScheduleFetchedAt();
   return jsonResponse({
     keyword,
     sourcePageUrl: SOURCE_PAGE_URL,

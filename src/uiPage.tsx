@@ -16,7 +16,7 @@ function HomePage() {
                   Atliekų išvežimo grafikai
                 </h1>
                 <p className="mt-4 max-w-xl text-sm text-muted-foreground sm:text-base">
-                  Pasirinkite gyvenvietę iš sąrašo, gauto tiesiogiai iš „NKOM“ XLSX
+                  Pasirinkite gyvenvietę iš sąrašo, gauto tiesiogiai iš „NKOM“ XLSX/PDF
                   failų, ir gaukite artimiausius šiukšlių išvežimo laikus su nuorodomis į „Google“ kalendorių.
                 </p>
               </div>
@@ -50,10 +50,10 @@ function HomePage() {
                     placeholder="Kraunama..."
                     className="h-11 w-full rounded-md border border-input bg-card pl-9 pr-3 text-sm outline-none transition focus:ring-2 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-55"
                     disabled
+                    onClick={(e) => e.currentTarget.select()}
                   />
                   <ul
                     id="cityOptions"
-                    role="listbox"
                     className="absolute z-20 mt-1 hidden max-h-64 w-full overflow-auto rounded-md border border-border bg-card py-1 text-sm shadow-lg"
                   ></ul>
                   <select
@@ -70,6 +70,7 @@ function HomePage() {
                   id="loadBtn"
                   className="mt-3 inline-flex h-11 w-full items-center justify-center rounded-md bg-primary px-4 text-sm font-semibold text-primary-foreground transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-55"
                   disabled
+                  type="button"
                 >
                   Rodyti grafiką
                 </button>

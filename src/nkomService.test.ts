@@ -4,6 +4,7 @@ import {
   buildIsoDate,
   createGoogleCalendarLink,
   dedupeEvents,
+  dropSharedContainerSection,
   extractCityCandidates,
   extractDatesFromRow,
   extractMonthColumns,
@@ -97,6 +98,35 @@ describe("extractMonthColumns", () => {
   test("returns empty when fewer than two month columns exist", () => {
     expect(extractMonthColumns([["Vietovė", "Sausis"]])).toEqual([]);
   });
+
+  // The PDF-derived packaging schedule has no separate section row: its two
+  // waste-type sections repeat the same three months, and each section's
+  // label is merged onto its own middle month cell rather than sitting in a
+  // row above the header (see src/pdfSchedule.ts's row-reconstruction notes).
+  test("splits repeating month groups by the label merged onto one of their own header cells", () => {
+    const columns = extractMonthColumns([
+      [
+        "Seniūnija",
+        "Vietovė",
+        "Spalis",
+        "Plastiko, popieriaus ir metalinės pakuotės Lapkritis",
+        "Gruodis",
+        "Spalis",
+        "Stiklo pakuotės Lapkritis",
+        "Gruodis",
+        "Maršrutas",
+      ],
+    ]);
+
+    expect(columns).toEqual([
+      { columnIndex: 2, month: 10, eventType: "Pakuotės" },
+      { columnIndex: 3, month: 11, eventType: "Pakuotės" },
+      { columnIndex: 4, month: 12, eventType: "Pakuotės" },
+      { columnIndex: 5, month: 10, eventType: "Stiklas" },
+      { columnIndex: 6, month: 11, eventType: "Stiklas" },
+      { columnIndex: 7, month: 12, eventType: "Stiklas" },
+    ]);
+  });
 });
 
 describe("extractDatesFromRow", () => {
@@ -141,6 +171,23 @@ describe("inferWasteType", () => {
     expect(inferWasteType("Žalia", "https://x/f.xlsx")).toBe("Žalia");
     expect(inferWasteType("", "https://x/grafikas.xlsx")).toBe("grafikas.xlsx");
   });
+
+  test("reads the type from a percent-encoded filename when the link label is generic", () => {
+    // Newer "PDF formatu" / "XLSX formatu" links carry no descriptive label,
+    // so the type has to come from the (percent-encoded, diacritic) filename.
+    expect(
+      inferWasteType(
+        "PDF formatu",
+        "https://x/Grafikas%20mi%C5%A1ri%C5%B3%202026.pdf",
+      ),
+    ).toBe("Mišrios atliekos");
+    expect(
+      inferWasteType(
+        "PDF formatu",
+        "https://x/Grafikas%20pakuo%C4%8Di%C5%B3%202026.pdf",
+      ),
+    ).toBe("Pakuotės/Stiklas");
+  });
 });
 
 describe("dedupeEvents", () => {
@@ -180,5 +227,51 @@ describe("extractCityCandidates", () => {
     expect(extractCityCandidates(["1", "Atliekų grafikas"])).toEqual([]);
     expect(extractCityCandidates(["1", "Kaunas 2"])).toEqual([]);
     expect(extractCityCandidates(["1", "kaunas"])).toEqual([]);
+  });
+});
+
+describe("dropSharedContainerSection", () => {
+  // The source spreadsheet has a trailing tab for shared apartment-block
+  // container-yard pickups, a different weekday+week-parity schedule
+  // unrelated to this app's per-locality dates. The PDF export concatenates
+  // every tab as extra pages, so it has to be dropped from the parsed rows.
+  test("drops the shared-container-yard section and everything after it", () => {
+    const data = [
+      ["Kalviškės", "5", "12"],
+      ["Vievis", "3", "9"],
+      [
+        "",
+        'UAB "Nemėžio komunalininkas" Buitinių atliekų surinkimas iš bendro naudojimo konteinerių aikštelių',
+      ],
+      ["Seniūnija", "Vietovė", "Sav. diena"],
+      ["Juodšilių", "Juodšilių k.", "Trečiadieniais"],
+    ];
+
+    expect(dropSharedContainerSection(data)).toEqual([
+      ["Kalviškės", "5", "12"],
+      ["Vievis", "3", "9"],
+    ]);
+  });
+
+  test("does not misfire on an ordinary address ending in the same words", () => {
+    // A real Vietovė entry can legitimately end in "... bendro naudojimo ir
+    // įmonės" ("... shared-use areas and businesses") — that alone must not
+    // trigger the cut, or it silently deletes every row after it.
+    const data = [
+      [
+        "Pagirių",
+        "Keturiasdešimt Totoriai (Vytauto g.), Pagiriai, Vaidotai, bendro naudojimo ir įmonės",
+        "Kas antrą trečiadienį",
+        "14, 28",
+      ],
+      ["Kalviškės", "5", "12"],
+    ];
+
+    expect(dropSharedContainerSection(data)).toEqual(data);
+  });
+
+  test("returns the data unchanged when the section is absent", () => {
+    const data = [["Kalviškės", "5", "12"]];
+    expect(dropSharedContainerSection(data)).toEqual(data);
   });
 });

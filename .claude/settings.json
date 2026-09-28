@@ -1,0 +1,14 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Invoke the /auto-memory skill now, before responding to the user, to load relevant project memory.\"}}'"
+          }
+        ]
+      }
+    ]
+  }
+}
