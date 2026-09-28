@@ -49,7 +49,7 @@ export async function readPdfScheduleRows(
 		const rows: CellValue[][] = [];
 		for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
 			const page = await doc.getPage(pageNumber);
-			rows.push(...(await extractPageRows(page)));
+			rows.push(...(await extractPageRows(page, pageNumber === 1)));
 		}
 		return rows;
 	} finally {
@@ -83,7 +83,10 @@ const LINE_TOLERANCE = 3;
 
 export type Item = { column: number; x: number; y: number; str: string };
 
-async function extractPageRows(page: PDFPageProxy): Promise<CellValue[][]> {
+async function extractPageRows(
+	page: PDFPageProxy,
+	isFirstPage: boolean,
+): Promise<CellValue[][]> {
 	const columnBounds = await extractColumnBounds(page);
 	if (columnBounds.length < 2) {
 		return [];
@@ -136,24 +139,18 @@ async function extractPageRows(page: PDFPageProxy): Promise<CellValue[][]> {
 		}
 	}
 
-	return groupLinesIntoRows(lines, columnCount);
+	return groupLinesIntoRows(lines, columnCount, isFirstPage);
 }
 
 // Groups physical lines into logical rows: a line with content outside the
-// wrap-only columns seeds a row ("anchor"); consecutive anchor lines form one
-// row together — unless the later one carries its own Seniūnija (row
-// identity) while the block already has one, which means it's a second,
-// unwrapped row that merely happens to sit right after the first with no
-// wrap-only line between them to separate them (e.g. two back-to-back rows
-// whose Vietovė/Sav. diena each fit on a single line). Every wrap-only line
-// (Vietovė or Sav. diena) is then folded into whichever row's anchor lines
-// are vertically nearest to it, since those wraps can run both before and
-// after a row's anchor lines.
+// wrap-only columns seeds a row ("anchor"); every wrap-only line (Vietovė or
+// Sav. diena) is then folded into whichever anchor block it belongs to. See
+// buildAnchorBlocks and assignWrapLines for how each half works.
 export function groupLinesIntoRows(
 	lines: Item[][],
 	columnCount: number,
+	isFirstPage: boolean,
 ): string[][] {
-	const lineY = lines.map(averageY);
 	const isAnchor = lines.map((line) =>
 		line.some((item) => !WRAP_ONLY_COLUMNS.has(item.column)),
 	);
@@ -161,8 +158,60 @@ export function groupLinesIntoRows(
 		line.some((item) => item.column === ROW_IDENTITY_COLUMN),
 	);
 
+	const blocks = buildAnchorBlocks(isAnchor, hasRowIdentity);
+	if (!blocks.length) {
+		return [];
+	}
+
+	// Only the document's actual first page can have genuine title/preamble
+	// text above its first row (e.g. a schedule year mentioned nowhere else) —
+	// there is no row for that text to wrap into, so it must not glom onto
+	// the header row as its "nearest" anchor (that would corrupt
+	// header-derived column detection, e.g. a title mentioning a month name
+	// duplicating that month's real header cell). It's kept as its own
+	// leading row instead of being dropped.
+	//
+	// On every later page, a page break can land mid-row: the top of the page
+	// is then that row's own wrapped Vietovė/Sav. diena spilling over from
+	// its anchor line lower down (each page is walked as its own fresh
+	// `lines` array, so that anchor is still this page's first one). Treating
+	// that spillover as a title would orphan it into a bogus row instead of
+	// folding it back into the row it belongs to, so on those pages it's
+	// scanned like any other wrap line, starting from line 0.
+	const firstAnchorLine = blocks[0]?.[0] ?? 0;
+	const leadingOrphans = isFirstPage
+		? range(0, firstAnchorLine).filter((i) => !isAnchor[i])
+		: [];
+	const wrapScanStart = isFirstPage ? firstAnchorLine : 0;
+
+	const rowLineIndices = assignWrapLines(lines, blocks, isAnchor, wrapScanStart);
+
+	const allRowIndices = leadingOrphans.length
+		? [leadingOrphans, ...rowLineIndices]
+		: rowLineIndices;
+
+	return allRowIndices.map((indices) =>
+		mergeLines(
+			indices
+				.sort((a, b) => a - b)
+				.map((i) => lines[i])
+				.filter((line): line is Item[] => line !== undefined),
+			columnCount,
+		),
+	);
+}
+
+// Consecutive anchor lines form one row together — unless the later one
+// carries its own Seniūnija (row identity) while the block already has one,
+// which means it's a second, unwrapped row that merely happens to sit right
+// after the first with no wrap-only line between them to separate them (e.g.
+// two back-to-back rows whose Vietovė/Sav. diena each fit on a single line).
+function buildAnchorBlocks(
+	isAnchor: boolean[],
+	hasRowIdentity: boolean[],
+): number[][] {
 	const blocks: number[][] = [];
-	for (let i = 0; i < lines.length; i++) {
+	for (let i = 0; i < isAnchor.length; i++) {
 		if (!isAnchor[i]) {
 			continue;
 		}
@@ -178,21 +227,38 @@ export function groupLinesIntoRows(
 			blocks.push([i]);
 		}
 	}
+	return blocks;
+}
 
-	if (!blocks.length) {
-		return [];
-	}
+const MAX_OPEN_BLOCK_ANCHOR_SPAN = 1;
 
+// Every wrap-only line (Vietovė or Sav. diena) is folded into whichever row's
+// anchor lines are vertically nearest to it, since those wraps can run both
+// before and after a row's anchor lines.
+//
+// A wrapped Vietovė street list can leave an unmatched "(" on one physical
+// line, with its closing ")" landing on a later line that — because
+// Vietovė wraps independently of the row's other columns — can sit
+// vertically closer to the NEXT row's anchor than to its own. Track each
+// row's running paren balance while scanning top to bottom, and pin a
+// Vietovė line to the row still waiting on a closing paren instead of
+// trusting y-distance for it.
+//
+// Source PDFs aren't guaranteed to be well-formed, though — a genuinely
+// unclosed "(" (a typo in the schedule itself) must not hold a block open
+// for the rest of the document, silently swallowing every later row's
+// Vietovė text into it. The wrap-past-the-next-anchor case this exists
+// for only ever needs to survive crossing ONE other row's anchor line, so
+// once a second anchor goes by with the paren still open, give up on it
+// and fall back to plain y-distance for whatever follows.
+function assignWrapLines(
+	lines: Item[][],
+	blocks: number[][],
+	isAnchor: boolean[],
+	firstAnchorLine: number,
+): number[][] {
+	const lineY = lines.map(averageY);
 	const blockY = blocks.map(averageOf(lineY));
-	// A page's title/preamble sits above its first anchor line (there is no
-	// row for it to wrap into), so it must not glom onto the header row as
-	// its "nearest" anchor — that would corrupt header-derived column
-	// detection (e.g. a title mentioning a month name duplicating that
-	// month's real header cell). It's kept as its own leading row instead of
-	// being dropped, since it's often the only place a schedule year appears.
-	const firstAnchorLine = blocks[0]?.[0] ?? 0;
-	const leadingOrphans = range(0, firstAnchorLine).filter((i) => !isAnchor[i]);
-
 	const rowLineIndices = blocks.map((block) => [...block]);
 
 	const lineToBlock = new Map<number, number>();
@@ -202,22 +268,6 @@ export function groupLinesIntoRows(
 		}
 	});
 
-	// A wrapped Vietovė street list can leave an unmatched "(" on one physical
-	// line, with its closing ")" landing on a later line that — because
-	// Vietovė wraps independently of the row's other columns (see the doc
-	// comment above) — can sit vertically closer to the NEXT row's anchor
-	// than to its own. Track each row's running paren balance while scanning
-	// top to bottom, and pin a Vietovė line to the row still waiting on a
-	// closing paren instead of trusting y-distance for it.
-	//
-	// Source PDFs aren't guaranteed to be well-formed, though — a genuinely
-	// unclosed "(" (a typo in the schedule itself) must not hold a block open
-	// for the rest of the document, silently swallowing every later row's
-	// Vietovė text into it. The wrap-past-the-next-anchor case this exists
-	// for only ever needs to survive crossing ONE other row's anchor line, so
-	// once a second anchor goes by with the paren still open, give up on it
-	// and fall back to plain y-distance for whatever follows.
-	const MAX_OPEN_BLOCK_ANCHOR_SPAN = 1;
 	const blockParenBalance: number[] = blocks.map(() => 0);
 	let openBlock: number | null = null;
 	let anchorsSinceOpen = 0;
@@ -269,19 +319,7 @@ export function groupLinesIntoRows(
 		}
 	}
 
-	const allRowIndices = leadingOrphans.length
-		? [leadingOrphans, ...rowLineIndices]
-		: rowLineIndices;
-
-	return allRowIndices.map((indices) =>
-		mergeLines(
-			indices
-				.sort((a, b) => a - b)
-				.map((i) => lines[i])
-				.filter((line): line is Item[] => line !== undefined),
-			columnCount,
-		),
-	);
+	return rowLineIndices;
 }
 
 function range(start: number, endExclusive: number): number[] {

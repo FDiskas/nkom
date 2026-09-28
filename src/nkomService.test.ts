@@ -228,6 +228,16 @@ describe("extractCityCandidates", () => {
     expect(extractCityCandidates(["1", "Kaunas 2"])).toEqual([]);
     expect(extractCityCandidates(["1", "kaunas"])).toEqual([]);
   });
+
+  test("rejects street names left unparenthesized in the source row", () => {
+    // Some rows list a street sublist as plain comma-separated items instead
+    // of wrapping it in its own parentheses, so stripParenthesizedText never
+    // sees it — each item ends in "g." (gatvė/street), which a genuine
+    // locality name never does.
+    expect(
+      extractCityCandidates(["1", "Lauko g., Lenkų g., Mickūnų g., Mažeikiai"]),
+    ).toEqual(["Mažeikiai"]);
+  });
 });
 
 describe("dropSharedContainerSection", () => {

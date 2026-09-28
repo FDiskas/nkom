@@ -154,23 +154,9 @@ function renderOptions(): void {
     .map((city, index) => {
       const isActive = index === activeIndex;
       const isSelected = city === citySelect.value;
-      const classes =
-        "cursor-pointer px-3 py-2" + (isActive ? " bg-muted" : "");
-      return (
-        '<li id="cityOption-' +
-        String(index) +
-        '" role="option" data-index="' +
-        String(index) +
-        '" data-value="' +
-        escapeHtml(city) +
-        '" aria-selected="' +
-        String(isSelected) +
-        '" class="' +
-        classes +
-        '">' +
-        escapeHtml(city) +
-        "</li>"
-      );
+      const classes = `cursor-pointer px-3 py-2${isActive ? " bg-muted" : ""}`;
+      const safeCity = escapeHtml(city);
+      return `<li id="cityOption-${index}" role="option" data-index="${index}" data-value="${safeCity}" aria-selected="${isSelected}" class="${classes}">${safeCity}</li>`;
     })
     .join("");
 
@@ -463,15 +449,7 @@ function renderSourceFiles(urls: string[]): void {
       const format = url.toLowerCase().split("?")[0]?.endsWith(".pdf")
         ? "PDF"
         : "XLSX";
-      return (
-        '<a class="block text-xs text-muted-foreground underline decoration-dotted underline-offset-4" href="' +
-        safeUrl +
-        '" target="_blank" rel="noreferrer">' +
-        format +
-        " šaltinis " +
-        String(index + 1) +
-        "</a>"
-      );
+      return `<a class="block text-xs text-muted-foreground underline decoration-dotted underline-offset-4" href="${safeUrl}" target="_blank" rel="noreferrer">${format} šaltinis ${index + 1}</a>`;
     })
     .join("");
 }
@@ -505,23 +483,7 @@ function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
       const icon = escapeHtml(getEventTypeIcon(rawType));
       const link = escapeHtml(event.link || "#");
 
-      return (
-        '<article class="grid gap-3 rounded-xl border border-border bg-background/80 p-4 sm:grid-cols-[1fr_auto]">' +
-        "<div>" +
-        '<p class="text-sm font-semibold">' +
-        icon +
-        " " +
-        type +
-        "</p>" +
-        '<p class="text-xs text-muted-foreground">Data: ' +
-        date +
-        "</p>" +
-        "</div>" +
-        '<a href="' +
-        link +
-        '" target="_blank" rel="noreferrer" class="calendar-link inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-xs font-semibold hover:bg-muted">Pridėti į kalendorių</a>' +
-        "</article>"
-      );
+      return `<article class="grid gap-3 rounded-xl border border-border bg-background/80 p-4 sm:grid-cols-[1fr_auto]"><div><p class="text-sm font-semibold">${icon} ${type}</p><p class="text-xs text-muted-foreground">Data: ${date}</p></div><a href="${link}" target="_blank" rel="noreferrer" class="calendar-link inline-flex h-10 items-center justify-center rounded-md border border-border bg-card px-4 text-xs font-semibold hover:bg-muted">Pridėti į kalendorių</a></article>`;
     })
     .join("");
 

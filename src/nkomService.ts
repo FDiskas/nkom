@@ -294,6 +294,14 @@ const CITY_NAME_BLACKLIST = [
 // Lithuanian locality names start with an uppercase letter (incl. diacritics).
 const CITY_NAME_INITIAL = /^[A-Z\u0104\u010C\u0118\u0116\u012E\u0160\u0172\u016A\u017D]/;
 
+// A cell's street sublist is normally wrapped in its own parentheses (already
+// dropped by stripParenthesizedText before this runs), but some source rows
+// list street names as plain unparenthesized items instead, trailed by the
+// "g." (gatv\u0117/street) abbreviation \u2014 e.g. "Lauko g., Lenk\u0173 g., Mick\u016Bn\u0173 g.".
+// A genuine locality name never ends in that standalone abbreviation, so it's
+// a reliable way to catch this case too.
+const STREET_ABBREVIATION_ENDING = /(?:^|\s)g$/;
+
 function isPlausibleCityName(cleaned: string): boolean {
   const normalized = normalizeText(cleaned);
   if (normalized.length < 3 || normalized.length > 40) {
@@ -301,6 +309,10 @@ function isPlausibleCityName(cleaned: string): boolean {
   }
 
   if (CITY_NAME_BLACKLIST.some((token) => normalized.includes(token))) {
+    return false;
+  }
+
+  if (STREET_ABBREVIATION_ENDING.test(normalized)) {
     return false;
   }
 
@@ -565,6 +577,28 @@ export function extractScheduleYear(data: CellValue[][]): number | null {
 }
 
 export function extractMonthColumns(data: CellValue[][]): MonthColumn[] {
+  const { entries, rowIndex: headerRowIndex } = findMonthHeaderRow(data);
+  if (entries.length < 2) {
+    return [];
+  }
+
+  const headerRow = data[headerRowIndex] ?? [];
+  const sectionRow = headerRowIndex > 0 ? data[headerRowIndex - 1] : undefined;
+  const eventTypes = resolveEventTypes(entries, headerRow, sectionRow);
+
+  return entries.map(([columnIndex, month], i) => ({
+    columnIndex,
+    month,
+    eventType: eventTypes[i] ?? null,
+  }));
+}
+
+// The header row is whichever row carries the most recognizable month names —
+// picked over any fixed row index since XLSX and PDF exports don't agree on
+// how many rows precede it.
+function findMonthHeaderRow(
+  data: CellValue[][],
+): { entries: Array<[number, number]>; rowIndex: number } {
   let bestRowMonths = new Map<number, number>();
   let bestRowIndex = -1;
 
@@ -584,24 +618,27 @@ export function extractMonthColumns(data: CellValue[][]): MonthColumn[] {
     }
   });
 
-  if (bestRowMonths.size < 2) {
-    return [];
-  }
+  return {
+    entries: [...bestRowMonths.entries()].sort((a, b) => a[0] - b[0]),
+    rowIndex: bestRowIndex,
+  };
+}
 
-  const headerRow = data[bestRowIndex] ?? [];
-  const sectionRow = bestRowIndex > 0 ? data[bestRowIndex - 1] : undefined;
-
-  const entries = [...bestRowMonths.entries()].sort((a, b) => a[0] - b[0]);
-  // The PDF export (unlike XLSX) has no separate section row above the
-  // header: a waste-type label like "Plastiko, popieriaus ir metalinės
-  // pakuotės" is drawn as its own merged cell spanning a group of month
-  // columns, and lands — via the column's start-x — inside whichever month
-  // cell it happens to overlap (observed: the group's middle month), so it
-  // ends up concatenated onto that one header cell's own text rather than
-  // sitting in a row of its own. So a column's own header cell is checked
-  // first; only once no column in its repeating-month group carries a label
-  // does the row above the header get consulted (the older XLSX-style
-  // layout, where the label truly is a separate row).
+// The PDF export (unlike XLSX) has no separate section row above the
+// header: a waste-type label like "Plastiko, popieriaus ir metalinės
+// pakuotės" is drawn as its own merged cell spanning a group of month
+// columns, and lands — via the column's start-x — inside whichever month
+// cell it happens to overlap (observed: the group's middle month), so it
+// ends up concatenated onto that one header cell's own text rather than
+// sitting in a row of its own. So a column's own header cell is checked
+// first; only once no column in its repeating-month group carries a label
+// does the row above the header get consulted (the older XLSX-style
+// layout, where the label truly is a separate row).
+function resolveEventTypes(
+  entries: Array<[number, number]>,
+  headerRow: CellValue[],
+  sectionRow: CellValue[] | undefined,
+): Array<string | null> {
   const ownTypes = entries.map(([columnIndex]) =>
     classifyWasteTypeLabel(headerRow[columnIndex]),
   );
@@ -610,13 +647,11 @@ export function extractMonthColumns(data: CellValue[][]): MonthColumn[] {
     entries.map(([, month]) => month),
   );
 
-  return entries.map(([columnIndex, month], i) => ({
-    columnIndex,
-    month,
-    eventType:
+  return entries.map(
+    ([columnIndex], i) =>
       ownTypes[i] ??
       (sectionRow ? inferEventTypeFromSectionRow(sectionRow, columnIndex) : null),
-  }));
+  );
 }
 
 // A header row can bundle several waste-type sections that each repeat the

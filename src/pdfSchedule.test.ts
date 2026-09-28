@@ -142,7 +142,7 @@ describe("groupLinesIntoRows", () => {
       line([0, "Lavoriškių"], [1, "Lavoriškių k., Vilniaus g. 24"], [2, "Kas antrą ketvirtadienį"], [6, "MRY 481"]),
     ];
 
-    expect(groupLinesIntoRows(lines, COLUMN_COUNT)).toEqual([
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, true)).toEqual([
       ["Kalvelių", "Kalvelių k. (Sodų g. 18)", "Kas antrą antradienį", "", "", "", "NCY 851"],
       ["Lavoriškių", "Lavoriškių k., Vilniaus g. 24", "Kas antrą ketvirtadienį", "", "", "", "MRY 481"],
     ]);
@@ -159,7 +159,7 @@ describe("groupLinesIntoRows", () => {
       line([0, "Seniūnija"], [1, "Vietovė"], [3, "Spalis"], [4, "Lapkritis"], [5, "Gruodis"], [6, "Maršrutas"]),
     ];
 
-    expect(groupLinesIntoRows(lines, COLUMN_COUNT)).toEqual([
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, true)).toEqual([
       ["Seniūnija", "Vietovė", "", "Spalis", "Plastiko, popieriaus ir metalinės pakuotės Lapkritis", "Gruodis", "Maršrutas"],
     ]);
   });
@@ -170,7 +170,7 @@ describe("groupLinesIntoRows", () => {
       line([6, "(9)"]),
     ];
 
-    expect(groupLinesIntoRows(lines, COLUMN_COUNT)).toEqual([
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, true)).toEqual([
       ["Rukainių", "Voverių k. 1", "Kas antrą ketvirtadienį", "", "", "", "KMJ 481 (9)"],
     ]);
   });
@@ -206,7 +206,7 @@ describe("groupLinesIntoRows", () => {
       ),
     ];
 
-    expect(groupLinesIntoRows(lines, COLUMN_COUNT)).toEqual([
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, true)).toEqual([
       [
         "Mickūnai",
         "Mickūnai (Darželių, Mokyklos, Mokytojų, Miško, Pirties g.),",
@@ -232,10 +232,44 @@ describe("groupLinesIntoRows", () => {
       withY(79, line([1, "Cstreet"])),
     ];
 
-    expect(groupLinesIntoRows(lines, COLUMN_COUNT)).toEqual([
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, true)).toEqual([
       ["Aaa", "Aaa (Street1,", "", "", "", "", ""],
       ["Bbb", "", "", "", "", "", ""],
       ["Ccc", "Cstreet", "", "", "", "", ""],
+    ]);
+  });
+
+  test("folds a page-leading Vietovė wrap into its row instead of orphaning it, on every page but the first", () => {
+    // Real nkom.lt PDFs hit this: a row's Vietovė wraps ABOVE its own anchor
+    // line (Seniūnija sits vertically centered in the wrapped block), and
+    // when that row happens to be the first one on a page, its leading wrap
+    // line is indistinguishable — by position alone — from a page 1 title
+    // sitting above the header row. Only page 1 can have a real title, so
+    // later pages must fold this leading wrap into the row it belongs to.
+    const lines = [
+      line([1, "Pagiriai (Šiltnamių, Kalno g.,"]),
+      line([0, "Pagirių"], [3, "13, 27"], [6, "GDL 454"]),
+      line([1, "Kaštonų g., Žilvyčių g.)"], [2, "antradienį"]),
+      line([0, "Nemėžio"], [3, "7, 21"], [6, "MJN 664"]),
+    ];
+
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, false)).toEqual([
+      ["Pagirių", "Pagiriai (Šiltnamių, Kalno g., Kaštonų g., Žilvyčių g.)", "antradienį", "13, 27", "", "", "GDL 454"],
+      ["Nemėžio", "", "", "7, 21", "", "", "MJN 664"],
+    ]);
+  });
+
+  test("still treats a leading wrap-only line as a title/preamble row on the actual first page", () => {
+    const lines = [
+      line([1, 'UAB "Nemėžio komunalininkas" 2026 m. grafikas']),
+      line([0, "Seniūnija"], [1, "Vietovė"], [3, "Spalis"], [6, "Maršrutas"]),
+      line([0, "Pagirių"], [1, "Kalviai"], [3, "7, 21"], [6, "GDL 454"]),
+    ];
+
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, true)).toEqual([
+      ["", 'UAB "Nemėžio komunalininkas" 2026 m. grafikas', "", "", "", "", ""],
+      ["Seniūnija", "Vietovė", "", "Spalis", "", "", "Maršrutas"],
+      ["Pagirių", "Kalviai", "", "7, 21", "", "", "GDL 454"],
     ]);
   });
 });
