@@ -490,17 +490,15 @@ function renderEvents(root: HTMLElement, events: NkomEvent[]): void {
   root.innerHTML = rows;
 }
 
+const SCHEDULE_TIME_ZONE = "Europe/Vilnius";
+
 function splitEventsByDate(events: NkomEvent[]): {
   upcoming: NkomEvent[];
   past: NkomEvent[];
 } {
-  const today = new Date();
-  const todayKey =
-    String(today.getFullYear()) +
-    "-" +
-    String(today.getMonth() + 1).padStart(2, "0") +
-    "-" +
-    String(today.getDate()).padStart(2, "0");
+  const todayKey = new Intl.DateTimeFormat("en-CA", {
+    timeZone: SCHEDULE_TIME_ZONE,
+  }).format(new Date());
   const upcoming: NkomEvent[] = [];
   const past: NkomEvent[] = [];
 

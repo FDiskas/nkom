@@ -259,6 +259,17 @@ describe("groupLinesIntoRows", () => {
     ]);
   });
 
+  test("does not fold a page-leading Vietovė wrap into this page's own first row when it's still closing out the previous page's open list", () => {
+    const lines = [
+      line([1, "trailing street name)"]),
+      line([0, "Pagirių"], [3, "13, 27"], [6, "GDL 454"]),
+    ];
+
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT, false, true)).toEqual([
+      ["Pagirių", "", "", "13, 27", "", "", "GDL 454"],
+    ]);
+  });
+
   test("still treats a leading wrap-only line as a title/preamble row on the actual first page", () => {
     const lines = [
       line([1, 'UAB "Nemėžio komunalininkas" 2026 m. grafikas']),

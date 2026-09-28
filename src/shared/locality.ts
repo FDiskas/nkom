@@ -83,7 +83,6 @@ function stemLocalityWord(word: string): string {
   const endings = [
     "iai",
     "iu",
-    "ių",
     "io",
     "ui",
     "ai",
@@ -97,7 +96,6 @@ function stemLocalityWord(word: string): string {
     "a",
     "i",
     "u",
-    "ų",
   ];
 
   for (const ending of endings) {

@@ -294,13 +294,7 @@ const CITY_NAME_BLACKLIST = [
 // Lithuanian locality names start with an uppercase letter (incl. diacritics).
 const CITY_NAME_INITIAL = /^[A-Z\u0104\u010C\u0118\u0116\u012E\u0160\u0172\u016A\u017D]/;
 
-// A cell's street sublist is normally wrapped in its own parentheses (already
-// dropped by stripParenthesizedText before this runs), but some source rows
-// list street names as plain unparenthesized items instead, trailed by the
-// "g." (gatv\u0117/street) abbreviation \u2014 e.g. "Lauko g., Lenk\u0173 g., Mick\u016Bn\u0173 g.".
-// A genuine locality name never ends in that standalone abbreviation, so it's
-// a reliable way to catch this case too.
-const STREET_ABBREVIATION_ENDING = /(?:^|\s)g$/;
+const TRAILING_STREET_ABBREVIATION = /(?:^|\s)g$/;
 
 function isPlausibleCityName(cleaned: string): boolean {
   const normalized = normalizeText(cleaned);
@@ -312,7 +306,7 @@ function isPlausibleCityName(cleaned: string): boolean {
     return false;
   }
 
-  if (STREET_ABBREVIATION_ENDING.test(normalized)) {
+  if (TRAILING_STREET_ABBREVIATION.test(normalized)) {
     return false;
   }
 
@@ -324,16 +318,16 @@ function isPlausibleCityName(cleaned: string): boolean {
 }
 
 function pickCityCell(row: CellValue[]): string | undefined {
-  // The second column usually holds the locality; otherwise fall back to the
-  // first non-empty text cell in the row.
-  const second = row[1];
-  if (typeof second === "string" && second.trim()) {
-    return second;
+  const vietove = row[1];
+  if (typeof vietove === "string" && vietove.trim()) {
+    return vietove;
   }
 
-  return row.find(
-    (cell): cell is string => typeof cell === "string" && Boolean(cell.trim()),
-  );
+  // Column 0 is Seniūnija (district), never a locality — skip it so a blank
+  // Vietovė cell doesn't fall back to the district name.
+  return row
+    .slice(2)
+    .find((cell): cell is string => typeof cell === "string" && Boolean(cell.trim()));
 }
 
 export function extractCityCandidates(row: CellValue[]): string[] {
@@ -743,9 +737,13 @@ export function getMonthNumber(value: CellValue): number | null {
     return null;
   }
 
-  const normalized = normalizeText(value);
+  // A month name only ever starts a word (matches "Lapkritis" and merged
+  // labels like "... pakuotės Lapkritis"), so requiring a word-start match
+  // rules out a token merely appearing mid-word, unlike a plain substring
+  // search.
+  const words = normalizeText(value).split(/\s+/);
   for (const [token, month] of MONTH_TOKENS) {
-    if (normalized.includes(token)) {
+    if (words.some((word) => word.startsWith(token))) {
       return month;
     }
   }

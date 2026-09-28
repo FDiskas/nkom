@@ -53,6 +53,14 @@ describe("getMonthNumber", () => {
     expect(getMonthNumber("Savaitė")).toBeNull();
     expect(getMonthNumber(5)).toBeNull();
   });
+
+  test("does not match a month stem occurring mid-word, only at a word's start", () => {
+    expect(getMonthNumber("Kaspališkės")).toBeNull();
+  });
+
+  test("still matches a month name merged onto a waste-type label", () => {
+    expect(getMonthNumber("Stiklo pakuotės Lapkritis")).toBe(11);
+  });
 });
 
 describe("buildIsoDate", () => {
@@ -237,6 +245,10 @@ describe("extractCityCandidates", () => {
     expect(
       extractCityCandidates(["1", "Lauko g., Lenkų g., Mickūnų g., Mažeikiai"]),
     ).toEqual(["Mažeikiai"]);
+  });
+
+  test("does not fall back to the Seniūnija (district) column when Vietovė is blank", () => {
+    expect(extractCityCandidates(["Marijampolio", ""])).toEqual([]);
   });
 });
 

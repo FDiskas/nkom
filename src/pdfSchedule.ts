@@ -47,9 +47,24 @@ export async function readPdfScheduleRows(
 	try {
 		const doc = await loadingTask.promise;
 		const rows: CellValue[][] = [];
+		let carryOpenVietove = false;
 		for (let pageNumber = 1; pageNumber <= doc.numPages; pageNumber++) {
 			const page = await doc.getPage(pageNumber);
-			rows.push(...(await extractPageRows(page, pageNumber === 1)));
+			const { rows: pageRows, leadingContinuation, endsOpen } = await extractPageRows(
+				page,
+				pageNumber === 1,
+				carryOpenVietove,
+			);
+
+			const previousRow = rows[rows.length - 1];
+			if (leadingContinuation && previousRow) {
+				previousRow[VIETOVE_COLUMN] = previousRow[VIETOVE_COLUMN]
+					? `${previousRow[VIETOVE_COLUMN]} ${leadingContinuation}`
+					: leadingContinuation;
+			}
+
+			rows.push(...pageRows);
+			carryOpenVietove = endsOpen;
 		}
 		return rows;
 	} finally {
@@ -83,13 +98,20 @@ const LINE_TOLERANCE = 3;
 
 export type Item = { column: number; x: number; y: number; str: string };
 
+type PageExtractionResult = {
+	rows: string[][];
+	leadingContinuation: string;
+	endsOpen: boolean;
+};
+
 async function extractPageRows(
 	page: PDFPageProxy,
 	isFirstPage: boolean,
-): Promise<CellValue[][]> {
+	carryOpenVietove: boolean,
+): Promise<PageExtractionResult> {
 	const columnBounds = await extractColumnBounds(page);
 	if (columnBounds.length < 2) {
-		return [];
+		return { rows: [], leadingContinuation: "", endsOpen: false };
 	}
 	const columnCount = columnBounds.length - 1;
 
@@ -139,7 +161,13 @@ async function extractPageRows(
 		}
 	}
 
-	return groupLinesIntoRows(lines, columnCount, isFirstPage);
+	const { rows, leadingContinuation } = buildRows(
+		lines,
+		columnCount,
+		isFirstPage,
+		carryOpenVietove,
+	);
+	return { rows, leadingContinuation, endsOpen: endsWithOpenVietove(rows) };
 }
 
 // Groups physical lines into logical rows: a line with content outside the
@@ -150,7 +178,17 @@ export function groupLinesIntoRows(
 	lines: Item[][],
 	columnCount: number,
 	isFirstPage: boolean,
+	carryOpenVietove = false,
 ): string[][] {
+	return buildRows(lines, columnCount, isFirstPage, carryOpenVietove).rows;
+}
+
+function buildRows(
+	lines: Item[][],
+	columnCount: number,
+	isFirstPage: boolean,
+	carryOpenVietove: boolean,
+): { rows: string[][]; leadingContinuation: string } {
 	const isAnchor = lines.map((line) =>
 		line.some((item) => !WRAP_ONLY_COLUMNS.has(item.column)),
 	);
@@ -160,29 +198,39 @@ export function groupLinesIntoRows(
 
 	const blocks = buildAnchorBlocks(isAnchor, hasRowIdentity);
 	if (!blocks.length) {
-		return [];
+		return { rows: [], leadingContinuation: "" };
 	}
 
-	// Only the document's actual first page can have genuine title/preamble
-	// text above its first row (e.g. a schedule year mentioned nowhere else) —
-	// there is no row for that text to wrap into, so it must not glom onto
-	// the header row as its "nearest" anchor (that would corrupt
-	// header-derived column detection, e.g. a title mentioning a month name
-	// duplicating that month's real header cell). It's kept as its own
-	// leading row instead of being dropped.
-	//
-	// On every later page, a page break can land mid-row: the top of the page
-	// is then that row's own wrapped Vietovė/Sav. diena spilling over from
-	// its anchor line lower down (each page is walked as its own fresh
-	// `lines` array, so that anchor is still this page's first one). Treating
-	// that spillover as a title would orphan it into a bogus row instead of
-	// folding it back into the row it belongs to, so on those pages it's
-	// scanned like any other wrap line, starting from line 0.
 	const firstAnchorLine = blocks[0]?.[0] ?? 0;
+
+	// A Vietovė street list left with an unclosed "(" at the end of the
+	// previous page continues here, before this page's own first anchor —
+	// fold it onto the previous page's last row instead of onto this page's
+	// first row (see endsWithOpenVietove and the readPdfScheduleRows loop).
+	let leadingContinuation = "";
+	let continuationScanEnd = 0;
+	if (carryOpenVietove) {
+		let balance = 1;
+		for (let i = 0; i < firstAnchorLine; i++) {
+			const text = localityText(lines[i]);
+			if (!text) {
+				break;
+			}
+			leadingContinuation = leadingContinuation
+				? `${leadingContinuation} ${text}`
+				: text;
+			balance += parenBalanceDelta(text);
+			continuationScanEnd = i + 1;
+			if (balance <= 0) {
+				break;
+			}
+		}
+	}
+
 	const leadingOrphans = isFirstPage
-		? range(0, firstAnchorLine).filter((i) => !isAnchor[i])
+		? range(continuationScanEnd, firstAnchorLine).filter((i) => !isAnchor[i])
 		: [];
-	const wrapScanStart = isFirstPage ? firstAnchorLine : 0;
+	const wrapScanStart = isFirstPage ? firstAnchorLine : continuationScanEnd;
 
 	const rowLineIndices = assignWrapLines(lines, blocks, isAnchor, wrapScanStart);
 
@@ -190,7 +238,7 @@ export function groupLinesIntoRows(
 		? [leadingOrphans, ...rowLineIndices]
 		: rowLineIndices;
 
-	return allRowIndices.map((indices) =>
+	const rows = allRowIndices.map((indices) =>
 		mergeLines(
 			indices
 				.sort((a, b) => a - b)
@@ -199,6 +247,8 @@ export function groupLinesIntoRows(
 			columnCount,
 		),
 	);
+
+	return { rows, leadingContinuation };
 }
 
 // Consecutive anchor lines form one row together — unless the later one
@@ -255,7 +305,7 @@ function assignWrapLines(
 	lines: Item[][],
 	blocks: number[][],
 	isAnchor: boolean[],
-	firstAnchorLine: number,
+	wrapScanStart: number,
 ): number[][] {
 	const lineY = lines.map(averageY);
 	const blockY = blocks.map(averageOf(lineY));
@@ -272,7 +322,7 @@ function assignWrapLines(
 	let openBlock: number | null = null;
 	let anchorsSinceOpen = 0;
 
-	for (let i = firstAnchorLine; i < lines.length; i++) {
+	for (let i = wrapScanStart; i < lines.length; i++) {
 		const localityDelta = parenBalanceDelta(localityText(lines[i]));
 
 		if (isAnchor[i]) {
@@ -350,6 +400,11 @@ function parenBalanceDelta(text: string): number {
 		}
 	}
 	return balance;
+}
+
+function endsWithOpenVietove(rows: string[][]): boolean {
+	const lastRow = rows[rows.length - 1];
+	return parenBalanceDelta(lastRow?.[VIETOVE_COLUMN] ?? "") > 0;
 }
 
 function averageOf(values: number[]): (indices: number[]) => number {
