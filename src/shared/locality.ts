@@ -16,7 +16,10 @@ export function stripParenthesizedText(value: string): string {
     result = result.replace(/\([^()]*\)/g, " ");
   }
 
-  return result;
+  // Source text (esp. PDF-extracted rows) sometimes has an unmatched "(" or
+  // ")" left over after a paren's counterpart ended up in a different
+  // fragment/line; drop those stragglers too.
+  return result.replace(/[()]/g, " ");
 }
 
 export function splitCityParts(value: string): string[] {
@@ -36,7 +39,7 @@ export function cleanCityDisplayName(value: string): string {
 
 export function normalizeLocality(value: string): string {
   return normalizeText(value)
-    .replace(/["“”„']/g, "")
+    .replace(/["“”„']/g, " ")
     .replace(/\b(?:vs|k|km|mstl|m)\b/g, " ")
     .replace(/[^a-z0-9\s]/g, " ")
     .replace(/\s+/g, " ")

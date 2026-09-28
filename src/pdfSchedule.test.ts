@@ -174,4 +174,68 @@ describe("groupLinesIntoRows", () => {
       ["Rukainių", "Voverių k. 1", "Kas antrą ketvirtadienį", "", "", "", "KMJ 481 (9)"],
     ]);
   });
+
+  // Vietovė wraps independently of a row's other columns (see the module doc
+  // comment), so a long parenthesized street list's tail line can land
+  // vertically closer to the NEXT row's anchor than to its own — this must
+  // not glue that tail's street names onto the next row's locality.
+  function withY(y: number, items: Item[]): Item[] {
+    return items.map((item) => ({ ...item, y }));
+  }
+
+  test("keeps a wrapped Vietovė continuation on its own row even when it sits closer to the next row's anchor", () => {
+    const lines = [
+      withY(
+        100,
+        line(
+          [0, "Mickūnai"],
+          [1, "Mickūnai (Darželių, Mokyklos, Mokytojų,"],
+          [2, "Kas antrą trečiadienį"],
+          [6, "NCY 851"],
+        ),
+      ),
+      withY(50, line([1, "Miško, Pirties g.),"])),
+      withY(
+        40,
+        line(
+          [0, "Nemėžio"],
+          [1, "Kuprioniškės"],
+          [2, "Kas antrą trečiadienį"],
+          [6, "MJN 664"],
+        ),
+      ),
+    ];
+
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT)).toEqual([
+      [
+        "Mickūnai",
+        "Mickūnai (Darželių, Mokyklos, Mokytojų, Miško, Pirties g.),",
+        "Kas antrą trečiadienį",
+        "",
+        "",
+        "",
+        "NCY 851",
+      ],
+      ["Nemėžio", "Kuprioniškės", "Kas antrą trečiadienį", "", "", "", "MJN 664"],
+    ]);
+  });
+
+  test("gives up pinning to an open paren once it has spanned more than one other row, instead of swallowing the rest of the document", () => {
+    // Source PDFs sometimes really do have an unclosed "(" (a typo in the
+    // schedule itself), not just one split across a wrap. That must not hold
+    // its row open forever — only the immediately next row's anchor is
+    // tolerated before falling back to plain y-distance.
+    const lines = [
+      withY(100, line([0, "Aaa"], [1, "Aaa (Street1,"])),
+      withY(90, line([0, "Bbb"])),
+      withY(80, line([0, "Ccc"])),
+      withY(79, line([1, "Cstreet"])),
+    ];
+
+    expect(groupLinesIntoRows(lines, COLUMN_COUNT)).toEqual([
+      ["Aaa", "Aaa (Street1,", "", "", "", "", ""],
+      ["Bbb", "", "", "", "", "", ""],
+      ["Ccc", "Cstreet", "", "", "", "", ""],
+    ]);
+  });
 });

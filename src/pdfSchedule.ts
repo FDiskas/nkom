@@ -68,7 +68,8 @@ export async function readPdfScheduleRows(
 // its start. Instead every "anchor" line (content in Seniūnija or the
 // day/route columns) seeds a row, and every wrap-only line — Vietovė or
 // Sav. diena — is folded into whichever anchor is vertically closest to it.
-const WRAP_ONLY_COLUMNS = new Set([1, 2]); // Vietovė, Sav. diena
+const VIETOVE_COLUMN = 1;
+const WRAP_ONLY_COLUMNS = new Set([VIETOVE_COLUMN, 2]); // Vietovė, Sav. diena
 // Seniūnija (column 0) never wraps and is always present on a genuine row,
 // so it doubles as that row's identity: a second anchor line that supplies
 // its own Seniūnija can't be a continuation of the row already accumulating
@@ -193,11 +194,79 @@ export function groupLinesIntoRows(
 	const leadingOrphans = range(0, firstAnchorLine).filter((i) => !isAnchor[i]);
 
 	const rowLineIndices = blocks.map((block) => [...block]);
+
+	const lineToBlock = new Map<number, number>();
+	blocks.forEach((block, blockIndex) => {
+		for (const i of block) {
+			lineToBlock.set(i, blockIndex);
+		}
+	});
+
+	// A wrapped Vietovė street list can leave an unmatched "(" on one physical
+	// line, with its closing ")" landing on a later line that — because
+	// Vietovė wraps independently of the row's other columns (see the doc
+	// comment above) — can sit vertically closer to the NEXT row's anchor
+	// than to its own. Track each row's running paren balance while scanning
+	// top to bottom, and pin a Vietovė line to the row still waiting on a
+	// closing paren instead of trusting y-distance for it.
+	//
+	// Source PDFs aren't guaranteed to be well-formed, though — a genuinely
+	// unclosed "(" (a typo in the schedule itself) must not hold a block open
+	// for the rest of the document, silently swallowing every later row's
+	// Vietovė text into it. The wrap-past-the-next-anchor case this exists
+	// for only ever needs to survive crossing ONE other row's anchor line, so
+	// once a second anchor goes by with the paren still open, give up on it
+	// and fall back to plain y-distance for whatever follows.
+	const MAX_OPEN_BLOCK_ANCHOR_SPAN = 1;
+	const blockParenBalance: number[] = blocks.map(() => 0);
+	let openBlock: number | null = null;
+	let anchorsSinceOpen = 0;
+
 	for (let i = firstAnchorLine; i < lines.length; i++) {
+		const localityDelta = parenBalanceDelta(localityText(lines[i]));
+
 		if (isAnchor[i]) {
+			if (openBlock !== null) {
+				anchorsSinceOpen++;
+				if (anchorsSinceOpen > MAX_OPEN_BLOCK_ANCHOR_SPAN) {
+					openBlock = null;
+					anchorsSinceOpen = 0;
+				}
+			}
+
+			const blockIndex = lineToBlock.get(i);
+			if (blockIndex !== undefined && localityDelta !== 0) {
+				blockParenBalance[blockIndex] =
+					(blockParenBalance[blockIndex] ?? 0) + localityDelta;
+				if ((blockParenBalance[blockIndex] ?? 0) > 0) {
+					openBlock = blockIndex;
+					anchorsSinceOpen = 0;
+				} else if (openBlock === blockIndex) {
+					openBlock = null;
+				}
+			}
 			continue;
 		}
-		rowLineIndices[closestIndex(blockY, lineY[i] ?? 0)]?.push(i);
+
+		const isVietoveLine = lines[i]?.some(
+			(item) => item.column === VIETOVE_COLUMN,
+		);
+		const target: number =
+			isVietoveLine && openBlock !== null
+				? openBlock
+				: closestIndex(blockY, lineY[i] ?? 0);
+
+		rowLineIndices[target]?.push(i);
+
+		if (isVietoveLine) {
+			blockParenBalance[target] = (blockParenBalance[target] ?? 0) + localityDelta;
+			if ((blockParenBalance[target] ?? 0) > 0) {
+				openBlock = target;
+				anchorsSinceOpen = 0;
+			} else {
+				openBlock = null;
+			}
+		}
 	}
 
 	const allRowIndices = leadingOrphans.length
@@ -224,6 +293,25 @@ function range(start: number, endExclusive: number): number[] {
 
 function averageY(line: Item[]): number {
 	return line.reduce((sum, item) => sum + item.y, 0) / line.length;
+}
+
+function localityText(line: Item[] | undefined): string {
+	return (line ?? [])
+		.filter((item) => item.column === VIETOVE_COLUMN)
+		.map((item) => item.str)
+		.join(" ");
+}
+
+function parenBalanceDelta(text: string): number {
+	let balance = 0;
+	for (const char of text) {
+		if (char === "(") {
+			balance++;
+		} else if (char === ")") {
+			balance--;
+		}
+	}
+	return balance;
 }
 
 function averageOf(values: number[]): (indices: number[]) => number {

@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"Invoke the /auto-memory skill now, before responding to the user, to load relevant project memory.\"}}'"
+            "command": "echo '{\"hookSpecificOutput\":{\"hookEventName\":\"SessionStart\",\"additionalContext\":\"MANDATORY, NO EXCEPTIONS: invoke the /auto-memory skill right now, before doing anything else and before responding to the user, to load relevant project memory. This applies on every session start (startup, resume, clear, compact) with no exceptions.\"}}'"
           }
         ]
       }

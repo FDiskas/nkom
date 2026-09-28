@@ -30,6 +30,15 @@ describe("stripParenthesizedText", () => {
       "A D",
     );
   });
+
+  test("removes an unmatched trailing or leading paren", () => {
+    expect(stripParenthesizedText("Statybininkų g.)").trim()).toBe(
+      "Statybininkų g.",
+    );
+    expect(stripParenthesizedText("(Statybininkų g.").trim()).toBe(
+      "Statybininkų g.",
+    );
+  });
 });
 
 describe("splitCityParts", () => {
@@ -62,6 +71,12 @@ describe("normalizeLocality", () => {
   test("strips diacritics, quotes and standalone abbreviations", () => {
     expect(normalizeLocality("Didžioji Riešė k.")).toBe("didzioji riese");
     expect(normalizeLocality("„Kalviškės“")).toBe("kalviskes");
+  });
+
+  test("treats quotes with and without surrounding spaces as the same locality", () => {
+    expect(normalizeLocality('SB "Rasa"- Piktakonių')).toBe(
+      normalizeLocality('SB"Rasa"- Piktakonių'),
+    );
   });
 });
 
